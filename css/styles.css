@@ -37,6 +37,7 @@ body {
 
 .screen { display: none; flex-direction: column; min-height: 100vh; }
 .screen.active { display: flex; }
+#screen-login { display: flex; }
 
 /* Top bar */
 .top-bar {
