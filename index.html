@@ -36,6 +36,21 @@
       </header>
       <main class="home-body">
         <div style="font-size:14px;color:var(--text);margin-bottom:16px">Hola, <span id="user-nombre" style="font-weight:500"></span></div>
+<div class="section-label">Ubicación</div>
+        <button class="action-card" id="btn-checkin" onclick="mostrarModalCheckin()">
+          <div class="action-icon icon-blue">C</div>
+          <div>
+            <div class="action-title">Check-in en cliente</div>
+            <div class="action-sub">Registrar llegada con GPS</div>
+          </div>
+        </button>
+        <button class="action-card" onclick="exportarDatosGeo()" style="margin-bottom:16px">
+          <div class="action-icon icon-gray">E</div>
+          <div>
+            <div class="action-title">Exportar datos GPS</div>
+            <div class="action-sub">Descargar CSV para Power BI</div>
+          </div>
+        </button>
         <div class="section-label">Registro rápido</div>
         <button class="action-card" onclick="irA('screen-form','visita')">
           <div class="action-icon icon-blue">V</div>
