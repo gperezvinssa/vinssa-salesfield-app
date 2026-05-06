@@ -25,14 +25,19 @@ async function iniciarApp(account) {
   document.getElementById('screen-login').style.display = 'none';
   document.getElementById('app').style.display = 'block';
 
-  const f = document.getElementById('fecha-hoy');
-  if (f) f.textContent = fechaHoy();
-  const u = document.getElementById('user-initials');
-  if (u) u.textContent = CONFIG.usuario.iniciales;
-  const n = document.getElementById('user-nombre');
-  if (n) n.textContent = nombre.split(' ')[0];
+  setTimeout(() => {
+    const f = document.getElementById('fecha-hoy');
+    if (f) f.textContent = new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',timeZone:'America/Monterrey'});
+    const u = document.getElementById('user-initials');
+    if (u) u.textContent = CONFIG.usuario.iniciales;
+    const n = document.getElementById('user-nombre');
+    if (n) n.textContent = nombre.split(' ')[0];
 
-  mostrarScreen('screen-home');
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    const home = document.getElementById('screen-home');
+    if (home) home.classList.add('active');
+    window.scrollTo(0,0);
+  }, 100);
 }
 
 async function loginMicrosoft() {
