@@ -1,0 +1,17 @@
+{
+  "name": "Vinssa Field App",
+  "short_name": "Vinssa Field",
+  "description": "Registro de visitas, demos y oportunidades",
+  "start_url": "/vinssa-salesfield-app/",
+  "display": "standalone",
+  "background_color": "#f4f4f0",
+  "theme_color": "#111827",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
