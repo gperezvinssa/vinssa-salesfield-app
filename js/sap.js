@@ -181,48 +181,87 @@ async function sapCrearContacto(registro) {
 // ── Guardar en SharePoint (via Power Automate) ───────────────────────────────
 
 async function guardarEnSharePoint(registro, sapOppId, sapActId) {
-  const geoActivo = JSON.parse(localStorage.getItem('vinssa_checkin_activo') || 'null');
   const geoRegistros = JSON.parse(localStorage.getItem('vinssa_geo_registros') || '[]');
   const ultimoCheckin = geoRegistros.filter(r => r.tipo === 'checkin' && r.cliente === registro.cliente).pop();
   const ultimoCheckout = geoRegistros.filter(r => r.tipo === 'checkout' && r.cliente === registro.cliente).pop();
 
-  const fila = {
-    Fecha: new Date().toLocaleDateString('es-MX', { timeZone: CONFIG.timezone }),
-    Hora: new Date().toLocaleTimeString('es-MX', { timeZone: CONFIG.timezone }),
+  const item = {
+    Title: registro.cliente,
     Asesor: registro.asesor,
     Tipo: registro.tipo,
-    Cliente: registro.cliente,
     Marca: registro.marca,
     Producto: registro.producto,
     Etapa: registro.etapa || '',
-    Monto: registro.monto || '',
+    Monto: parseFloat(registro.monto) || 0,
     Moneda: registro.moneda || 'MXP',
-    Cierre: registro.cierre || '',
+    Cierre: registro.cierre || null,
     Competidor: registro.competidores.join(', '),
     Lideres: registro.lideres.join(', '),
     Notas: registro.notas || '',
-    GPS_Lat: registro.gps?.lat || '',
-    GPS_Lng: registro.gps?.lng || '',
-    GPS_Precision: registro.gps?.precision || '',
+    GPS_Lat: registro.gps?.lat || null,
+    GPS_Lng: registro.gps?.lng || null,
+    GPS_Precision: registro.gps?.precision || null,
     Checkin_Hora: ultimoCheckin?.hora || '',
     Checkout_Hora: ultimoCheckout?.horaSalida || '',
-    Duracion_Min: ultimoCheckout?.duracionMinutos || '',
+    Duracion_Min: ultimoCheckout?.duracionMinutos || null,
     Contacto_Nuevo: registro.contactoNuevo ? 'Sí' : 'No',
     Contacto_Nombre: registro.contactoNuevo?.nombre || '',
     Contacto_Puesto: registro.contactoNuevo?.puesto || '',
     Contacto_Tel: registro.contactoNuevo?.telefono || '',
     Contacto_Email: registro.contactoNuevo?.email || '',
-    SAP_OppID: sapOppId || '',
-    SAP_ActID: sapActId || ''
+    SAP_OppID: sapOppId?.toString() || '',
+    SAP_ActID: sapActId?.toString() || '',
+    Estatus_SAP: sapOppId ? 'Sincronizado' : 'Pendiente'
   };
 
-  // Guardar localmente siempre como respaldo
-  const respaldo = JSON.parse(localStorage.getItem('vinssa_registros_pendientes') || '[]');
-  respaldo.push({ fila, timestamp: Date.now() });
-  localStorage.setItem('vinssa_registros_pendientes', JSON.stringify(respaldo));
+  try {
+    // Obtener token de SharePoint via Microsoft Graph
+    const tokenResponse = await msalInstance.acquireTokenSilent({
+      scopes: ['https://versatilidadsaltillo.sharepoint.com/.default'],
+      account: msalInstance.getAllAccounts()[0]
+    });
 
-  console.log('Registro listo para SharePoint:', fila);
-  return fila;
+    const res = await fetch(
+      'https://versatilidadsaltillo.sharepoint.com/sites/VINSSAAutomation/_api/web/lists/getbytitle(\'Visitas Field App\')/items',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenResponse.accessToken}`,
+          'Content-Type': 'application/json;odata=verbose',
+          'Accept': 'application/json;odata=verbose',
+          'X-RequestDigest': await getRequestDigest(tokenResponse.accessToken)
+        },
+        body: JSON.stringify({ __metadata: { type: 'SP.Data.Visitas_x0020_Field_x0020_AppListItem' }, ...item })
+      }
+    );
+
+    if (!res.ok) throw new Error('Error al guardar en SharePoint');
+    const data = await res.json();
+    console.log('Guardado en SharePoint:', data.d?.Id);
+    return data.d?.Id;
+  } catch(e) {
+    console.warn('SharePoint error:', e.message);
+    // Guardar localmente como respaldo
+    const respaldo = JSON.parse(localStorage.getItem('vinssa_registros_pendientes') || '[]');
+    respaldo.push({ item, timestamp: Date.now() });
+    localStorage.setItem('vinssa_registros_pendientes', JSON.stringify(respaldo));
+    return null;
+  }
+}
+
+async function getRequestDigest(token) {
+  const res = await fetch(
+    'https://versatilidadsaltillo.sharepoint.com/sites/VINSSAAutomation/_api/contextinfo',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json;odata=verbose'
+      }
+    }
+  );
+  const data = await res.json();
+  return data.d?.GetContextWebInformation?.FormDigestValue || '';
 }
 
 // ── Flujo principal de sincronización ───────────────────────────────────────
