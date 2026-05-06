@@ -12,7 +12,12 @@ const MSAL_CONFIG = {
 
 const msalInstance = new msal.PublicClientApplication(MSAL_CONFIG);
 
-const LOGIN_SCOPES = { scopes: ["User.Read"] };
+const LOGIN_SCOPES = { 
+  scopes: [
+    "User.Read",
+    "https://versatilidadsaltillo.sharepoint.com/.default"
+  ] 
+};
 
 async function iniciarApp(account) {
   const nombre = account.name || account.username;
