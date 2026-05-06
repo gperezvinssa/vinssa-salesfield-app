@@ -11,7 +11,7 @@ const CONFIG = {
     trazabilidad: {
       label: "Trazabilidad y Automatización",
       marcas: {
-        "Marcaje":      ["Telesis", "SIC Marking"],
+        "Marcaje":      ["Telesis"],
         "Visión":       ["Cognex"],
         "Robótica":     ["UR", "MIR", "Nabtesco", "EasyRobotics"],
         "Herramientas": ["Atlas Copco"]
