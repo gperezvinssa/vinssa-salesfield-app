@@ -194,7 +194,7 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     Etapa: registro.etapa || '',
     Monto: parseFloat(registro.monto) || 0,
     Moneda: registro.moneda || 'MXP',
-    Competidor: registro.competidores?.join(', ') || '',
+    Competitor: registro.competidores?.join(', ') || '',
     Lideres: registro.lideres?.join(', ') || '',
     Notas: registro.notas || '',
     GPS_Lat: registro.gps?.lat || 0,
