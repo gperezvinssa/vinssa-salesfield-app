@@ -11,50 +11,56 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <div id="app">
+
+  <div id="screen-login" class="screen active">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px">
+      <div style="width:64px;height:64px;background:#111827;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:white;margin-bottom:24px">V</div>
+      <h1 style="font-size:22px;font-weight:500;margin-bottom:6px">Vinssa Field App</h1>
+      <p style="font-size:14px;color:var(--muted);margin-bottom:40px;text-align:center">Registro de visitas, demos y oportunidades</p>
+      <button onclick="loginMicrosoft()" style="width:100%;max-width:320px;padding:13px;background:#0078d4;color:white;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">
+        <svg width="20" height="20" viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+        Entrar con Microsoft
+      </button>
+      <p style="font-size:12px;color:var(--hint);margin-top:20px;text-align:center">Usa tu correo de Vinssa</p>
+    </div>
+  </div>
+
+  <div id="app" style="display:none">
     <div id="screen-home" class="screen active">
       <header class="top-bar">
         <div class="top-bar-info">
           <span class="top-bar-greeting">Vinssa Field</span>
           <span class="top-bar-date" id="fecha-hoy"></span>
         </div>
-        <div class="top-bar-user" id="user-initials">GP</div>
+        <div class="top-bar-user" id="user-initials" onclick="cerrarSesion()" title="Cerrar sesión" style="cursor:pointer">GP</div>
       </header>
       <main class="home-body">
+        <div style="font-size:14px;color:var(--text);margin-bottom:16px">Hola, <span id="user-nombre" style="font-weight:500"></span></div>
         <div class="section-label">Registro rápido</div>
-        <button class="action-card" onclick="irA('screen-form', 'visita')">
+        <button class="action-card" onclick="irA('screen-form','visita')">
           <div class="action-icon icon-blue">V</div>
-          <div>
-            <div class="action-title">Nueva visita</div>
-            <div class="action-sub">Registrar cliente visitado</div>
-          </div>
+          <div><div class="action-title">Nueva visita</div><div class="action-sub">Registrar cliente visitado</div></div>
         </button>
-        <button class="action-card" onclick="irA('screen-form', 'demo')">
+        <button class="action-card" onclick="irA('screen-form','demo')">
           <div class="action-icon icon-green">D</div>
-          <div>
-            <div class="action-title">Demo realizada</div>
-            <div class="action-sub">Con o sin líder de línea</div>
-          </div>
+          <div><div class="action-title">Demo realizada</div><div class="action-sub">Con o sin líder de línea</div></div>
         </button>
-        <button class="action-card" onclick="irA('screen-form', 'lead')">
+        <button class="action-card" onclick="irA('screen-form','lead')">
           <div class="action-icon icon-amber">L</div>
-          <div>
-            <div class="action-title">Lead / prospecto</div>
-            <div class="action-sub">Evaluación inicial</div>
-          </div>
+          <div><div class="action-title">Lead / prospecto</div><div class="action-sub">Evaluación inicial</div></div>
         </button>
-        <button class="action-card" onclick="irA('screen-form', 'oportunidad')">
+        <button class="action-card" onclick="irA('screen-form','oportunidad')">
           <div class="action-icon icon-gray">O</div>
-          <div>
-            <div class="action-title">Actualizar oportunidad</div>
-            <div class="action-sub">Cambiar etapa o datos</div>
-          </div>
+          <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Cambiar etapa o datos</div></div>
         </button>
       </main>
     </div>
     <div id="screen-form" class="screen"></div>
   </div>
+
+  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
