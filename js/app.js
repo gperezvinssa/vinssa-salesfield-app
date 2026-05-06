@@ -174,7 +174,7 @@ function filtrarLideres(q){
   });
 }
 
-function guardar(){
+async function guardar() {
   guardarCampos();
   const cliente=STATE.campos['cliente-nombre']?.trim();
   const producto=STATE.campos['producto']?.trim();
@@ -199,9 +199,18 @@ function guardar(){
     asesor:CONFIG.usuario.email
   };
 
-  console.log('Registro a enviar a SAP:',registro);
-  alert(`✅ Registro guardado\n\n${registro.tipo.toUpperCase()} — ${registro.cliente}\n${registro.marca} · ${registro.producto}\n\nConexión SAP: próxima sesión`);
-  mostrarScreen('screen-home');
+  console.log('Registro a enviar a SAP:', registro);
+  
+  // Capa 1 — capturar GPS al guardar
+  const registroConGPS = await capturarGPSAlGuardar(registro);
+  if (!registroConGPS) return;
+
+  const gpsInfo = registroConGPS.gps 
+    ? `📍 GPS: ${registroConGPS.gps.lat.toFixed(4)}, ${registroConGPS.gps.lng.toFixed(4)} (±${registroConGPS.gps.precision}m)`
+    : '📍 GPS: no disponible';
+
+  alert(`✅ Registro guardado\n\n${registro.tipo.toUpperCase()} — ${registro.cliente}\n${registro.marca} · ${registro.producto}\n\n${gpsInfo}\n\nConexión SAP: próxima sesión`);
+  mostrarScreen('screen-home');;
 }
 
 window.addEventListener('DOMContentLoaded',()=>{
