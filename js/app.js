@@ -201,16 +201,31 @@ async function guardar() {
 
   console.log('Registro a enviar a SAP:', registro);
   
-  // Capa 1 — capturar GPS al guardar
+// Capa 1 — capturar GPS al guardar
   const registroConGPS = await capturarGPSAlGuardar(registro);
   if (!registroConGPS) return;
 
-  const gpsInfo = registroConGPS.gps 
-    ? `📍 GPS: ${registroConGPS.gps.lat.toFixed(4)}, ${registroConGPS.gps.lng.toFixed(4)} (±${registroConGPS.gps.precision}m)`
-    : '📍 GPS: no disponible';
+  // Mostrar progreso
+  const btnGuardar = document.querySelector('.save-btn');
+  if (btnGuardar) { btnGuardar.textContent = 'Sincronizando con SAP...'; btnGuardar.disabled = true; }
 
-  alert(`✅ Registro guardado\n\n${registro.tipo.toUpperCase()} — ${registro.cliente}\n${registro.marca} · ${registro.producto}\n\n${gpsInfo}\n\nConexión SAP: próxima sesión`);
-  mostrarScreen('screen-home');;
+  // Sincronizar con SAP y SharePoint
+  const resultado = await sincronizarConSAP(registroConGPS);
+
+  const gpsInfo = registroConGPS.gps
+    ? `📍 ${registroConGPS.gps.lat.toFixed(4)}, ${registroConGPS.gps.lng.toFixed(4)}`
+    : '📍 GPS no disponible';
+
+  if (resultado) {
+    const sapInfo = resultado.sapOppId
+      ? `SAP Oportunidad #${resultado.sapOppId}`
+      : resultado.errores.length ? `⚠️ ${resultado.errores[0]}` : 'SAP: registrado';
+    alert(`✅ Registro guardado\n\n${registro.tipo.toUpperCase()} — ${registro.cliente}\n${registro.marca} · ${registro.producto}\n\n${gpsInfo}\n${sapInfo}`);
+  } else {
+    alert(`✅ Guardado localmente\n\n${registro.tipo.toUpperCase()} — ${registro.cliente}\n${registro.marca} · ${registro.producto}\n\n${gpsInfo}\nSAP: pendiente de sincronizar`);
+  }
+
+  mostrarScreen('screen-home');
 }
 
 window.addEventListener('DOMContentLoaded',()=>{
