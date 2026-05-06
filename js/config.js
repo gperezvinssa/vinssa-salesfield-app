@@ -11,9 +11,9 @@ const CONFIG = {
     trazabilidad: {
       label: "Trazabilidad y Automatización",
       marcas: {
-        "Marcaje":      ["Telesis", "SIC Marking", "Keyence"],
-        "Visión":       ["Cognex", "Keyence"],
-        "Robótica":     ["UR / MIR", "Nabtesco", "EasyRobotics"],
+        "Marcaje":      ["Telesis", "SIC Marking"],
+        "Visión":       ["Cognex"],
+        "Robótica":     ["UR", "MIR", "Nabtesco", "EasyRobotics"],
         "Herramientas": ["Atlas Copco"]
       }
     },
@@ -51,8 +51,7 @@ const CONFIG = {
   ],
 
   competidores: [
-    "Trumpf", "Videojet", "Domino", "Keyence",
-    "Zebra", "Markem-Imaje", "Ninguno", "Otro"
+    "Keyence", "SIC Marking", "Ninguno", "Otro"
   ],
 
   sap: {
