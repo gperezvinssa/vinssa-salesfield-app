@@ -267,53 +267,11 @@ async function getRequestDigest(token) {
 // ── Flujo principal de sincronización ───────────────────────────────────────
 
 async function sincronizarConSAP(registro) {
-  const sesionActiva = await sapEnsureSession();
-
-  if (!sesionActiva) {
-    const usuario = prompt('Usuario SAP (tu correo de SAP):');
-    if (!usuario) return null;
-    const password = prompt('Contraseña SAP:');
-    if (!password) return null;
-
-    const ok = await sapLogin(usuario, password);
-    if (!ok) {
-      alert('No se pudo conectar a SAP. Verifica tus credenciales.');
-      return null;
-    }
-  }
-
   let sapOppId = null;
   let sapActId = null;
-  const errores = [];
 
-  try {
-    if (registro.tipo !== 'lead') {
-      const opp = await sapCrearOportunidad(registro);
-      sapOppId = opp?.SequenceNo || opp?.OpportunityId || null;
-    }
-  } catch(e) {
-    errores.push(`Oportunidad: ${e.message}`);
-    console.error(e);
-  }
+  // Guardar en SharePoint siempre — independiente de SAP
+  await guardarEnSharePoint(registro, null, null);
 
-  try {
-    const act = await sapCrearActividad(registro, sapOppId);
-    sapActId = act?.ActivityCode || null;
-  } catch(e) {
-    errores.push(`Actividad: ${e.message}`);
-    console.error(e);
-  }
-
-  try {
-    if (registro.contactoNuevo?.nombre) {
-      await sapCrearContacto(registro);
-    }
-  } catch(e) {
-    errores.push(`Contacto: ${e.message}`);
-    console.error(e);
-  }
-
-  await guardarEnSharePoint(registro, sapOppId, sapActId);
-
-  return { sapOppId, sapActId, errores };
+  return { sapOppId, sapActId, errores: ['SAP: pendiente via Power Automate'] };
 }
