@@ -192,9 +192,9 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     Marca: registro.marca,
     Producto: registro.producto,
     Etapa: registro.etapa || '',
-    Monto: parseFloat(registro.monto) || 0,
+    Monto: parseFloat(registro.monto) || null,
     Moneda: registro.moneda || 'MXP',
-    Cierre: registro.cierre || null,
+    Cierre: registro.cierre ? new Date(registro.cierre).toISOString() : null,
     Competidor: registro.competidores.join(', '),
     Lideres: registro.lideres.join(', '),
     Notas: registro.notas || '',
@@ -209,8 +209,8 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     Contacto_Puesto: registro.contactoNuevo?.puesto || '',
     Contacto_Tel: registro.contactoNuevo?.telefono || '',
     Contacto_Email: registro.contactoNuevo?.email || '',
-    SAP_OppID: sapOppId?.toString() || '',
-    SAP_ActID: sapActId?.toString() || '',
+    SAP_OppID: sapOppId ? sapOppId.toString() : '',
+    SAP_ActID: sapActId ? sapActId.toString() : '',
     Estatus_SAP: sapOppId ? 'Sincronizado' : 'Pendiente'
   };
 
@@ -228,8 +228,7 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
         headers: {
           'Authorization': `Bearer ${tokenResponse.accessToken}`,
           'Content-Type': 'application/json;odata=verbose',
-          'Accept': 'application/json;odata=verbose',
-          'X-RequestDigest': await getRequestDigest(tokenResponse.accessToken)
+          'Accept': 'application/json;odata=verbose'
         },
         body: JSON.stringify({ __metadata: { type: 'SP.Data.Visitas_x0020_Field_x0020_AppListItem' }, ...item })
       }
