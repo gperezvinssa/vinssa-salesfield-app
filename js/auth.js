@@ -13,10 +13,7 @@ const MSAL_CONFIG = {
 const msalInstance = new msal.PublicClientApplication(MSAL_CONFIG);
 
 const LOGIN_SCOPES = { 
-  scopes: [
-    "User.Read",
-    "https://versatilidadsaltillo.sharepoint.com/.default"
-  ] 
+  scopes: ["User.Read", "Sites.ReadWrite.All"]
 };
 
 async function iniciarApp(account) {
