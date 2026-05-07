@@ -285,3 +285,10 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => actualizarBotonCheckin(true, data.cliente), 200);
   }
 });
+
+// ── Exponer funciones globales ───────────────────────────────────────────────
+
+window.checkin           = checkin;
+window.checkout          = checkout;
+window.exportarDatosGeo  = exportarDatosGeo;
+window.capturarGPSAlGuardar = capturarGPSAlGuardar;
