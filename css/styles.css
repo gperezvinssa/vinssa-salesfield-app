@@ -249,3 +249,17 @@ textarea { min-height: 70px; resize: none; }
 }
 
 .nota-hint { font-size: 11px; color: var(--hint); margin-top: -4px; margin-bottom: 8px; }
+
+.action-card:disabled {
+  opacity: .4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.action-card.checkin-active {
+  border-color: #97C459;
+  background: #EAF3DE;
+}
+
+.action-card.checkin-active .action-title { color: #0F6E56; }
+.action-card.checkin-active .action-sub { color: #3B6D11; }
