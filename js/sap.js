@@ -200,6 +200,7 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     GPS_Lat: registro.gps?.lat || 0,
     GPS_Lng: registro.gps?.lng || 0,
     GPS_Precision: registro.gps?.precision || 0,
+    GPS_Disponible: registro.gpsDisponible ? 'Si' : 'No',
     Checkin_Hora: ultimoCheckin?.hora || '',
     Checkout_Hora: ultimoCheckout?.horaSalida || '',
     Duracion_Min: ultimoCheckout?.duracionMinutos || 0,
