@@ -228,6 +228,31 @@ async function guardar() {
   mostrarScreen('screen-home');
 }
 
+// ── Modal Check-in ───────────────────────────────────────────────────────────
+
+function mostrarModalCheckin() {
+  const nombre = prompt('¿Con qué cliente estás?');
+  if (nombre && nombre.trim()) {
+    checkin(nombre.trim());
+  }
+}
+
+// ── Exponer funciones globales ───────────────────────────────────────────────
+
+window.irA                  = irA;
+window.mostrarScreen        = mostrarScreen;
+window.selDivision          = selDivision;
+window.selMarca             = selMarca;
+window.selEtapa             = selEtapa;
+window.selMoneda            = selMoneda;
+window.toggleComp           = toggleComp;
+window.toggleLider          = toggleLider;
+window.toggleContacto       = toggleContacto;
+window.setClienteExiste     = setClienteExiste;
+window.filtrarLideres       = filtrarLideres;
+window.guardar              = guardar;
+window.mostrarModalCheckin  = mostrarModalCheckin;
+
 window.addEventListener('DOMContentLoaded',()=>{
   const f=$('fecha-hoy');if(f)f.textContent=fechaHoy();
   const u=$('user-initials');if(u)u.textContent=iniciales(CONFIG.usuario.nombre);
