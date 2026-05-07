@@ -54,7 +54,6 @@ async function capturarGPSAlGuardar(datosRegistro) {
     const pos = await obtenerPosicion();
     datosRegistro.gps = pos;
 
-    // Validar si está cerca del cliente registrado (si tenemos coords del cliente)
     if (datosRegistro.clienteCoords) {
       const distancia = distanciaMetros(
         pos.lat, pos.lng,
@@ -125,38 +124,38 @@ async function checkout() {
     return null;
   }
 
+  const entrada  = new Date(checkinActivo.horaEntrada);
+  const salida   = new Date();
+  const minutos  = Math.round((salida - entrada) / 60000);
+
+  let gpsSalida = null;
   try {
-    const pos = await obtenerPosicion();
-    const entrada = new Date(checkinActivo.horaEntrada);
-    const salida  = new Date();
-    const minutos = Math.round((salida - entrada) / 60000);
-
-    const registro = {
-      tipo: 'checkout',
-      cliente: checkinActivo.cliente,
-      asesor: CONFIG.usuario.email,
-      gpsEntrada: checkinActivo.gps,
-      gpsSalida: pos,
-      horaEntrada: checkinActivo.horaEntrada,
-      horaSalida: salida.toISOString(),
-      duracionMinutos: minutos
-    };
-
-    guardarRegistroGeo(registro);
-    localStorage.removeItem('vinssa_checkin_activo');
-    GEO.checkin = null;
-
-    actualizarBotonCheckin(false, null);
-    alert(`✅ Visita registrada\n\nCliente: ${registro.cliente}\nDuración: ${minutos} minutos`);
-    return registro;
+    gpsSalida = await obtenerPosicion();
   } catch(e) {
-    alert('No se pudo obtener tu ubicación al salir.');
-    return null;
+    console.warn('GPS no disponible al hacer checkout:', e.message);
   }
+
+  const registro = {
+    tipo: 'checkout',
+    cliente: checkinActivo.cliente,
+    asesor: CONFIG.usuario.email,
+    gpsEntrada: checkinActivo.gps,
+    gpsSalida: gpsSalida,
+    horaEntrada: checkinActivo.horaEntrada,
+    horaSalida: salida.toISOString(),
+    duracionMinutos: minutos
+  };
+
+  guardarRegistroGeo(registro);
+  localStorage.removeItem('vinssa_checkin_activo');
+  GEO.checkin = null;
+  actualizarBotonCheckin(false, null);
+  alert(`Visita terminada\n\nCliente: ${registro.cliente}\nDuración: ${minutos} minutos`);
+  return registro;
 }
 
 function actualizarBotonCheckin(activo, cliente) {
-  const btn = document.getElementById('btn-checkin');
+  const btn  = document.getElementById('btn-checkin');
   const btns = document.querySelectorAll('.registro-btn');
   const topBar = document.querySelector('.top-bar');
 
@@ -176,9 +175,12 @@ function actualizarBotonCheckin(activo, cliente) {
     }
     btns.forEach(b => {
       b.disabled = false;
-      b.querySelector('.action-sub').textContent = b.querySelector('.action-title').textContent === 'Nueva visita' ? 'Registrar cliente visitado' :
-        b.querySelector('.action-title').textContent === 'Demo realizada' ? 'Con o sin líder de línea' :
-        b.querySelector('.action-title').textContent === 'Lead / prospecto' ? 'Evaluación inicial' : 'Cambiar etapa o datos';
+      const title = b.querySelector('.action-title')?.textContent;
+      b.querySelector('.action-sub').textContent =
+        title === 'Nueva visita'          ? 'Registrar cliente visitado' :
+        title === 'Demo realizada'        ? 'Con o sin líder de línea'   :
+        title === 'Lead / prospecto'      ? 'Evaluación inicial'         :
+                                            'Cambiar etapa o datos';
     });
     if (topBar) topBar.style.background = '#0F6E56';
   } else {
@@ -197,48 +199,6 @@ function actualizarBotonCheckin(activo, cliente) {
       b.querySelector('.action-sub').textContent = 'Requiere check-in activo';
     });
     if (topBar) topBar.style.background = '#111827';
-  }
-}
-
-async function checkout() {
-  const checkinActivo = GEO.checkin ||
-    JSON.parse(localStorage.getItem('vinssa_checkin_activo') || 'null');
-
-  if (!checkinActivo) {
-    alert('No hay ninguna visita activa.');
-    return null;
-  }
-
-  try {
-    const pos = await obtenerPosicion();
-    const entrada = new Date(checkinActivo.horaEntrada);
-    const salida  = new Date();
-    const minutos = Math.round((salida - entrada) / 60000);
-
-    const registro = {
-      tipo: 'checkout',
-      cliente: checkinActivo.cliente,
-      asesor: CONFIG.usuario.email,
-      gpsEntrada: checkinActivo.gps,
-      gpsSalida: pos,
-      horaEntrada: checkinActivo.horaEntrada,
-      horaSalida: salida.toISOString(),
-      duracionMinutos: minutos
-    };
-
-    guardarRegistroGeo(registro);
-    localStorage.removeItem('vinssa_checkin_activo');
-    GEO.checkin = null;
-
-    actualizarBotonCheckin(false, null);
-    alert(`Visita terminada\n\nCliente: ${registro.cliente}\nDuración: ${minutos} minutos`);
-    return registro;
-  } catch(e) {
-    // Si no hay GPS al salir, igual cerramos el check-in
-    localStorage.removeItem('vinssa_checkin_activo');
-    GEO.checkin = null;
-    actualizarBotonCheckin(false, null);
-    return null;
   }
 }
 
@@ -288,7 +248,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ── Exponer funciones globales ───────────────────────────────────────────────
 
-window.checkin           = checkin;
-window.checkout          = checkout;
-window.exportarDatosGeo  = exportarDatosGeo;
+window.checkin              = checkin;
+window.checkout             = checkout;
+window.exportarDatosGeo     = exportarDatosGeo;
 window.capturarGPSAlGuardar = capturarGPSAlGuardar;
