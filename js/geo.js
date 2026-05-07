@@ -157,27 +157,46 @@ async function checkout() {
 
 function actualizarBotonCheckin(activo, cliente) {
   const btn = document.getElementById('btn-checkin');
-  if (!btn) return;
+  const btns = document.querySelectorAll('.registro-btn');
+  const topBar = document.querySelector('.top-bar');
+
   if (activo) {
-    btn.innerHTML = `
-      <div class="action-icon icon-green" style="position:relative">
-        <span style="width:8px;height:8px;background:#22c55e;border-radius:50%;position:absolute;top:4px;right:4px;border:1.5px solid white"></span>
-        C
-      </div>
-      <div>
-        <div class="action-title">Terminar visita</div>
-        <div class="action-sub">En: ${cliente}</div>
-      </div>`;
-    btn.onclick = () => checkout();
-    btn.style.borderColor = '#97C459';
+    if (btn) {
+      btn.className = 'action-card checkin-active';
+      btn.onclick = () => checkout();
+      btn.innerHTML = `
+        <div class="action-icon icon-green" style="position:relative;background:#0F6E56;color:white">
+          <span style="width:8px;height:8px;background:#22c55e;border-radius:50%;position:absolute;top:4px;right:4px;border:1.5px solid white"></span>
+          C
+        </div>
+        <div>
+          <div class="action-title">Terminar visita</div>
+          <div class="action-sub">En: ${cliente}</div>
+        </div>`;
+    }
+    btns.forEach(b => {
+      b.disabled = false;
+      b.querySelector('.action-sub').textContent = b.querySelector('.action-title').textContent === 'Nueva visita' ? 'Registrar cliente visitado' :
+        b.querySelector('.action-title').textContent === 'Demo realizada' ? 'Con o sin líder de línea' :
+        b.querySelector('.action-title').textContent === 'Lead / prospecto' ? 'Evaluación inicial' : 'Cambiar etapa o datos';
+    });
+    if (topBar) topBar.style.background = '#0F6E56';
   } else {
-    btn.innerHTML = `
-      <div class="action-icon icon-blue">C</div>
-      <div>
-        <div class="action-title">Check-in en cliente</div>
-        <div class="action-sub">Registrar llegada con GPS</div>
-      </div>`;
-    btn.onclick = () => mostrarModalCheckin();
+    if (btn) {
+      btn.className = 'action-card';
+      btn.onclick = () => mostrarModalCheckin();
+      btn.innerHTML = `
+        <div class="action-icon icon-blue">C</div>
+        <div>
+          <div class="action-title">¿Estás con un cliente?</div>
+          <div class="action-sub">Registra tu llegada primero</div>
+        </div>`;
+    }
+    btns.forEach(b => {
+      b.disabled = true;
+      b.querySelector('.action-sub').textContent = 'Requiere check-in activo';
+    });
+    if (topBar) topBar.style.background = '#111827';
   }
 }
 
