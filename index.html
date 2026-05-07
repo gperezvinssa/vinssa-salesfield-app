@@ -34,33 +34,35 @@
         </div>
         <div class="top-bar-user" id="user-initials" onclick="cerrarSesion()" title="Cerrar sesión" style="cursor:pointer">GP</div>
       </header>
-      <main class="home-body">
-        <div style="font-size:14px;color:var(--text);margin-bottom:16px">Hola, <span id="user-nombre" style="font-weight:500"></span></div>
-<div class="section-label">Ubicación</div>
+<main class="home-body">
+        <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span id="user-nombre" style="font-weight:500"></span></div>
         <button class="action-card" id="btn-checkin" onclick="mostrarModalCheckin()">
           <div class="action-icon icon-blue">C</div>
           <div>
-            <div class="action-title">Check-in en cliente</div>
-            <div class="action-sub">Registrar llegada con GPS</div>
+            <div class="action-title">¿Estás con un cliente?</div>
+            <div class="action-sub">Registra tu llegada primero</div>
           </div>
         </button>
-        <div class="section-label">Registro rápido</div>
-        <button class="action-card" onclick="irA('screen-form','visita')">
-          <div class="action-icon icon-blue">V</div>
-          <div><div class="action-title">Nueva visita</div><div class="action-sub">Registrar cliente visitado</div></div>
-        </button>
-        <button class="action-card" onclick="irA('screen-form','demo')">
-          <div class="action-icon icon-green">D</div>
-          <div><div class="action-title">Demo realizada</div><div class="action-sub">Con o sin líder de línea</div></div>
-        </button>
-        <button class="action-card" onclick="irA('screen-form','lead')">
-          <div class="action-icon icon-amber">L</div>
-          <div><div class="action-title">Lead / prospecto</div><div class="action-sub">Evaluación inicial</div></div>
-        </button>
-        <button class="action-card" onclick="irA('screen-form','oportunidad')">
-          <div class="action-icon icon-gray">O</div>
-          <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Cambiar etapa o datos</div></div>
-        </button>
+        <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
+        <div class="section-label">¿Qué vas a registrar?</div>
+        <div id="registro-btns">
+          <button class="action-card registro-btn" onclick="irA('screen-form','visita')" disabled>
+            <div class="action-icon icon-blue">V</div>
+            <div><div class="action-title">Nueva visita</div><div class="action-sub">Requiere check-in activo</div></div>
+          </button>
+          <button class="action-card registro-btn" onclick="irA('screen-form','demo')" disabled>
+            <div class="action-icon icon-green">D</div>
+            <div><div class="action-title">Demo realizada</div><div class="action-sub">Requiere check-in activo</div></div>
+          </button>
+          <button class="action-card registro-btn" onclick="irA('screen-form','lead')" disabled>
+            <div class="action-icon icon-amber">L</div>
+            <div><div class="action-title">Lead / prospecto</div><div class="action-sub">Requiere check-in activo</div></div>
+          </button>
+          <button class="action-card registro-btn" onclick="irA('screen-form','oportunidad')" disabled>
+            <div class="action-icon icon-gray">O</div>
+            <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Requiere check-in activo</div></div>
+          </button>
+        </div>
       </main>
     </div>
     <div id="screen-form" class="screen"></div>
