@@ -200,9 +200,46 @@ function actualizarBotonCheckin(activo, cliente) {
   }
 }
 
-function mostrarModalCheckin() {
-  const cliente = prompt('¿En qué cliente estás?');
-  if (cliente && cliente.trim()) checkin(cliente.trim());
+async function checkout() {
+  const checkinActivo = GEO.checkin ||
+    JSON.parse(localStorage.getItem('vinssa_checkin_activo') || 'null');
+
+  if (!checkinActivo) {
+    alert('No hay ninguna visita activa.');
+    return null;
+  }
+
+  try {
+    const pos = await obtenerPosicion();
+    const entrada = new Date(checkinActivo.horaEntrada);
+    const salida  = new Date();
+    const minutos = Math.round((salida - entrada) / 60000);
+
+    const registro = {
+      tipo: 'checkout',
+      cliente: checkinActivo.cliente,
+      asesor: CONFIG.usuario.email,
+      gpsEntrada: checkinActivo.gps,
+      gpsSalida: pos,
+      horaEntrada: checkinActivo.horaEntrada,
+      horaSalida: salida.toISOString(),
+      duracionMinutos: minutos
+    };
+
+    guardarRegistroGeo(registro);
+    localStorage.removeItem('vinssa_checkin_activo');
+    GEO.checkin = null;
+
+    actualizarBotonCheckin(false, null);
+    alert(`Visita terminada\n\nCliente: ${registro.cliente}\nDuración: ${minutos} minutos`);
+    return registro;
+  } catch(e) {
+    // Si no hay GPS al salir, igual cerramos el check-in
+    localStorage.removeItem('vinssa_checkin_activo');
+    GEO.checkin = null;
+    actualizarBotonCheckin(false, null);
+    return null;
+  }
 }
 
 // ── CAPA 3 — Exportar datos para Power BI ───────────────────────────────────
