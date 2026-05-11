@@ -201,10 +201,14 @@ function dashParseFecha(val) {
   if (!val) return null;
   if (typeof val === 'number') {
     // Serial date de Excel: días desde 1/1/1900
-    return new Date((val - 25569) * 86400 * 1000);
+    // Usar UTC para evitar offset de zona horaria
+    const ms = (val - 25569) * 86400 * 1000;
+    const d = new Date(ms);
+    // Retornar fecha local correcta usando componentes UTC
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   }
   const s = String(val).trim();
-  // dd/MM/yyyy
+  // dd/MM/yyyy o d/M/yyyy
   const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m1) return new Date(parseInt(m1[3]), parseInt(m1[2]) - 1, parseInt(m1[1]));
   // yyyy-MM-dd
