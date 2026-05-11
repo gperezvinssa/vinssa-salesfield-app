@@ -774,12 +774,12 @@ function dashPipelineHtml(asesor) {
   const divEntries = Object.entries(porDiv).sort((a, b) => b[1] - a[1]);
   const maxDiv = divEntries.length ? divEntries[0][1] : 1;
 
-  return \`
+  return `
     <div class="pipe-wrap" style="padding-top:14px">
       <div class="pipe-hdr">
         <div>
-          <div class="pipe-total">\${dashFmt(totalOVs)}</div>
-          <div class="pipe-sub">pipeline comprometido · \${numOVs} OVs abiertas</div>
+          <div class="pipe-total">${dashFmt(totalOVs)}</div>
+          <div class="pipe-sub">pipeline comprometido · ${numOVs} OVs abiertas</div>
         </div>
       </div>
       <div class="dash-ctx dash-ctx-info" style="margin:0 0 12px">
@@ -787,35 +787,35 @@ function dashPipelineHtml(asesor) {
         <p>Órdenes de venta <strong>abiertas</strong> — comprometidas pero aún no facturadas.</p>
       </div>
 
-      \${divEntries.map(([div, total]) => {
+      ${divEntries.map(([div, total]) => {
         const pct = Math.round(total / totalOVs * 100);
         const w   = Math.round(total / maxDiv * 100);
-        return \`<div style="margin-bottom:10px;padding:0 16px">
+        return `<div style="margin-bottom:10px;padding:0 16px">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary)">\${div}</span>
-            <span style="font-size:12px;color:var(--color-text-secondary)">\${dashFmt(total)} · \${pct}%</span>
+            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary)">${div}</span>
+            <span style="font-size:12px;color:var(--color-text-secondary)">${dashFmt(total)} · ${pct}%</span>
           </div>
-          <div class="dash-pbar"><div class="dash-pfill" style="width:\${w}%;background:#185FA5"></div></div>
-        </div>\`;
+          <div class="dash-pbar"><div class="dash-pfill" style="width:${w}%;background:#185FA5"></div></div>
+        </div>`;
       }).join('')}
 
       <div style="padding:10px 16px 0">
         <div class="dash-lbl">Top OVs por monto</div>
-        \${topOVs.map(ov => \`
+        ${topOVs.map(ov => `
           <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--color-border-tertiary)">
             <div style="flex:1">
-              <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">\${ov.cliente}</div>
+              <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${ov.cliente}</div>
               <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
-                OV #\${ov.numOV} · \${ov.division}\${ov.fechaEntrega ? ' · Entrega: '+ov.fechaEntrega : ''}
-                \${!asesor ? ' · '+ov.asesor : ''}
+                OV #${ov.numOV} · ${ov.division}${ov.fechaEntrega ? ' · Entrega: '+ov.fechaEntrega : ''}
+                ${!asesor ? ' · '+ov.asesor : ''}
               </div>
             </div>
-            <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);flex-shrink:0">\${dashFmt(ov.total)}</div>
+            <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);flex-shrink:0">${dashFmt(ov.total)}</div>
           </div>
-        \`).join('')}
+        `).join('')}
       </div>
     </div>
-  \`;
+  `;
 }
 
 function dashRiesgoHtml(clientes, mostrarAsesor = false) {
