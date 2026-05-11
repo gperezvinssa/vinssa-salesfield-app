@@ -10,7 +10,7 @@ const DASHBOARD_CONFIG = {
   archivos: {
     roles:       'Lista Roles Dashboard.xlsx',
     ventas:      'Ventas Asesor.xlsx',
-    ovs:         'OVs Asesor.xlsx',
+    ovs:         'OVs asesor.xlsx',
     presupuesto: 'Presupuesto Ventas.xlsx'
   },
   // Mapeo GrupoArticulo SAP → División Dashboard
@@ -224,10 +224,14 @@ function dashCalcMetricas(asesor, mes, anio) {
     const grupo = String(v.GrupoArticulo || '').trim();
     const division = DASHBOARD_CONFIG.mapaGrupos[grupo];
     if (!division) return; // ignorar (ej. Vending Machines)
-    porDivision[division] = (porDivision[division] || 0) + parseFloat(v.Total || 0);
+    const vTotal = parseFloat(v.TotalUSD || 0) || (v.Moneda === 'USD' ? 0 : parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1));
+    porDivision[division] = (porDivision[division] || 0) + vTotal;
   });
 
-  const totalVenta = ventasFiltradas.reduce((s, v) => s + parseFloat(v.Total || 0), 0);
+  const totalVenta = ventasFiltradas.reduce((s, v) => {
+    const vt = parseFloat(v.TotalUSD || 0) || (v.Moneda === 'USD' ? 0 : parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1));
+    return s + vt;
+  }, 0);
   const numOVs = new Set(ventasFiltradas.map(v => v.NumOV)).size;
 
   // Presupuesto del asesor para ese mes
@@ -331,7 +335,7 @@ function dashClientesEnRiesgo(asesor, diasUmbral = 60) {
           cliente: String(v.Cliente || '').trim(),
           asesor: String(v.Asesor || '').trim(),
           fecha,
-          total: parseFloat(v.Total || 0),
+          total: parseFloat(v.TotalUSD || 0) || parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1),
           grupo: String(v.GrupoArticulo || '').trim()
         };
       }
@@ -745,7 +749,7 @@ function dashPipelineHtml(asesor) {
   }
 
   // Calcular total y agrupar por grupo de artículo / división
-  const totalOVs = ovsFiltradas.reduce((s, v) => s + parseFloat(v.Total || 0), 0);
+  const totalOVs = ovsFiltradas.reduce((s, v) => s + (parseFloat(v.TotalUSD || 0) || parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1)), 0);
   const numOVs   = new Set(ovsFiltradas.map(v => v.NumOV)).size;
 
   // Agrupar por división
@@ -754,7 +758,7 @@ function dashPipelineHtml(asesor) {
     const grupo = String(v.GrupoArticulo || '').trim();
     const div   = DASHBOARD_CONFIG.mapaGrupos[grupo] || 'Otros';
     if (!div || div === null) return;
-    porDiv[div] = (porDiv[div] || 0) + parseFloat(v.Total || 0);
+    porDiv[div] = (porDiv[div] || 0) + (parseFloat(v.TotalUSD || 0) || parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1));
   });
 
   // Top 10 OVs por monto
