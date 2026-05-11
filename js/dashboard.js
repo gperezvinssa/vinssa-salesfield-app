@@ -131,13 +131,19 @@ async function dashInit() {
   try {
     const token = await dashGetToken();
 
-    // Leer los cuatro archivos en paralelo
-    const [roles, ventas, ovs, presupuesto] = await Promise.all([
+    // Leer archivos — OVs es opcional
+    const [roles, ventas, presupuesto] = await Promise.all([
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.roles),
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.ventas),
-      dashLeerExcel(token, DASHBOARD_CONFIG.archivos.ovs),
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.presupuesto)
     ]);
+    // OVs opcional — no bloquea si no existe
+    let ovs = [];
+    try {
+      ovs = await dashLeerExcel(token, DASHBOARD_CONFIG.archivos.ovs);
+    } catch(e) {
+      console.warn('OVs Asesor.xlsx no encontrado — pipeline sin datos:', e.message);
+    }
 
     // Determinar rol del usuario actual
     const emailActual = DASH_STATE.userEmail;
@@ -554,7 +560,7 @@ function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
 
     <div id="dash-page-g-asesores" class="dash-page">
       <div class="dash-filter-row">
-        <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this,${JSON.stringify(equipo).replace(/'/g,"\\'")})">Todos</button>
+        <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this)">Todos</button>
         <button class="dash-fchip" onclick="dashFiltrarAsesores('riesgo',this)">En riesgo</button>
         <button class="dash-fchip" onclick="dashFiltrarAsesores('meta',this)">En meta</button>
       </div>
