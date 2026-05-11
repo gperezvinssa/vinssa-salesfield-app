@@ -170,6 +170,17 @@ async function dashInit() {
   }
 }
 
+// ── Obtener total en USD de una fila de ventas ───────────────────────────────
+function dashGetTotal(v) {
+  // Soporta columnas: Total, TotalUSD, TotalFrgn
+  const direct = parseFloat(v.Total || v.TotalUSD || v.TotalFrgn || 0);
+  if (direct > 0) return direct;
+  // Fallback: TotalMXP / TipoCambio
+  const mxp = parseFloat(v.TotalMXP || 0);
+  const tc  = parseFloat(v.TipoCambio || 1) || 1;
+  return mxp > 0 ? mxp / tc : 0;
+}
+
 // ── Normalizar nombre: quita acentos y pasa a mayúsculas ────────────────────
 function dashNormNombre(str) {
   return String(str || '')
@@ -224,14 +235,10 @@ function dashCalcMetricas(asesor, mes, anio) {
     const grupo = String(v.GrupoArticulo || '').trim();
     const division = DASHBOARD_CONFIG.mapaGrupos[grupo];
     if (!division) return; // ignorar (ej. Vending Machines)
-    const vTotal = parseFloat(v.TotalUSD || 0) || (v.Moneda === 'USD' ? 0 : parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1));
-    porDivision[division] = (porDivision[division] || 0) + vTotal;
+    porDivision[division] = (porDivision[division] || 0) + dashGetTotal(v);
   });
 
-  const totalVenta = ventasFiltradas.reduce((s, v) => {
-    const vt = parseFloat(v.TotalUSD || 0) || (v.Moneda === 'USD' ? 0 : parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1));
-    return s + vt;
-  }, 0);
+  const totalVenta = ventasFiltradas.reduce((s, v) => s + dashGetTotal(v), 0);
   const numOVs = new Set(ventasFiltradas.map(v => v.NumOV)).size;
 
   // Presupuesto del asesor para ese mes
@@ -335,7 +342,7 @@ function dashClientesEnRiesgo(asesor, diasUmbral = 60) {
           cliente: String(v.Cliente || '').trim(),
           asesor: String(v.Asesor || '').trim(),
           fecha,
-          total: parseFloat(v.TotalUSD || 0) || parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1),
+          total: dashGetTotal(v),
           grupo: String(v.GrupoArticulo || '').trim()
         };
       }
@@ -749,7 +756,7 @@ function dashPipelineHtml(asesor) {
   }
 
   // Calcular total y agrupar por grupo de artículo / división
-  const totalOVs = ovsFiltradas.reduce((s, v) => s + (parseFloat(v.TotalUSD || 0) || parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1)), 0);
+  const totalOVs = ovsFiltradas.reduce((s, v) => s + dashGetTotal(v), 0);
   const numOVs   = new Set(ovsFiltradas.map(v => v.NumOV)).size;
 
   // Agrupar por división
@@ -758,7 +765,7 @@ function dashPipelineHtml(asesor) {
     const grupo = String(v.GrupoArticulo || '').trim();
     const div   = DASHBOARD_CONFIG.mapaGrupos[grupo] || 'Otros';
     if (!div || div === null) return;
-    porDiv[div] = (porDiv[div] || 0) + (parseFloat(v.TotalUSD || 0) || parseFloat(v.TotalMXP || 0) / (parseFloat(v.TipoCambio || 1) || 1));
+    porDiv[div] = (porDiv[div] || 0) + dashGetTotal(v);
   });
 
   // Top 10 OVs por monto
@@ -776,7 +783,7 @@ function dashPipelineHtml(asesor) {
           division: DASHBOARD_CONFIG.mapaGrupos[String(v.GrupoArticulo||'').trim()] || 'Otros'
         };
       }
-      acc[key].total += parseFloat(v.Total || 0);
+      acc[key].total += dashGetTotal(v);
       return acc;
     }, {})
   ).sort((a, b) => b.total - a.total).slice(0, 10);
