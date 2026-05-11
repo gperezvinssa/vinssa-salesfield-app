@@ -30,7 +30,15 @@ const DASHBOARD_CONFIG = {
     'Servicio Taller':         'Servicios',
     'Vending Machines':        null  // ignorar
   },
-  meses: ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+  meses: ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],
+  // Alias: nombre normalizado en Presupuesto → nombre normalizado en SAP
+  mapaAlias: {
+    'JONATHAN ROCHE':     'JONATHAN ROCHE TOR',
+    'JUAN DE DIOS LOPEZ': 'JUAN DE DIOS',
+    'KYMBERLY PORTILLO':  'KIMBERLY PORTILLO',
+    'EDUARDO GONZALEZ':   'EDUARDO CARRASCO',
+    'ADRIAN JIMENEZ':     'JESUS ORTIZ'
+  }
 };
 
 // Estado global del dashboard
@@ -152,13 +160,19 @@ async function dashInit() {
   }
 }
 
-// ── Normalizar nombre para comparación (quita acentos, mayúsculas) ───────────
+// ── Normalizar nombre: quita acentos y pasa a mayúsculas ────────────────────
 function dashNormNombre(str) {
   return String(str || '')
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+}
+
+// ── Normalizar nombre de presupuesto → SAP (aplica alias) ───────────────────
+function dashNormPresup(str) {
+  const norm = dashNormNombre(str);
+  return DASHBOARD_CONFIG.mapaAlias[norm] || norm;
 }
 
 // ── Parser de fechas — soporta dd/MM/yyyy, yyyy-MM-dd y serial Excel ─────────
@@ -182,7 +196,8 @@ function dashParseFecha(val) {
 
 // ── Calcular métricas para un asesor/mes/año ─────────────────────────────────
 function dashCalcMetricas(asesor, mes, anio) {
-  const asesorNorm = dashNormNombre(asesor);
+  // asesor viene del presupuesto — aplicar alias para buscar en SAP
+  const asesorNorm = dashNormPresup(asesor);
   const ventasFiltradas = DASH_STATE.ventas.filter(v => {
     if (!v.Fecha) return false;
     const fecha = dashParseFecha(v.Fecha);
@@ -206,11 +221,15 @@ function dashCalcMetricas(asesor, mes, anio) {
   const numOVs = new Set(ventasFiltradas.map(v => v.NumOV)).size;
 
   // Presupuesto del asesor para ese mes
+  // Buscar presupuesto: el nombre del asesor viene del presupuesto (puede tener alias)
+  // El asesorNorm viene de SAP — necesitamos mapear presupuesto→SAP para comparar
   const presupFiltrado = DASH_STATE.presupuesto.filter(p => {
-    const pAsesor = dashNormNombre(p.Asesor);
+    const pAsesorSAP = dashNormPresup(p.Asesor); // convierte presupuesto→SAP norm
     const pMes = parseInt(p.Mes);
-    const pAnio = parseInt(p['Año'] || p.Anio || p.Year || 0);
-    return pAsesor === asesorNorm && pMes === mes && pAnio === anio;
+    // Año column may come with different encoding — try all variants
+    const pAnioRaw = p['Año'] || p['Ano'] || p['A\u00f1o'] || p.Year || 0;
+    const pAnio = parseInt(pAnioRaw);
+    return pAsesorSAP === asesorNorm && pMes === mes && pAnio === anio;
   });
 
   // Meta total del asesor (suma de todas sus divisiones ese mes)
@@ -270,19 +289,25 @@ function dashHistoricoAnual(asesor, anio) {
   return { meses, acumulado, acumuladoAnterior, mejorMes, metaAnual, proyeccion };
 }
 
-// ── Obtener lista única de asesores con presupuesto definido ─────────────────
+// ── Obtener lista única de asesores con presupuesto (nombres SAP normalizados) ─
 function dashGetAsesores() {
-  const conPresupuesto = new Set(
-    DASH_STATE.presupuesto
-      .map(p => String(p.Asesor || '').trim())
-      .filter(Boolean)
-  );
-  return [...conPresupuesto];
+  // Retorna nombres como aparecen en el presupuesto (para mostrar en UI)
+  // pero internamente se buscan en SAP con alias
+  const seen = new Set();
+  const result = [];
+  DASH_STATE.presupuesto.forEach(p => {
+    const nombre = String(p.Asesor || '').trim();
+    if (nombre && !seen.has(nombre)) {
+      seen.add(nombre);
+      result.push(nombre);
+    }
+  });
+  return result;
 }
 
 // ── Calcular clientes en riesgo ──────────────────────────────────────────────
 function dashClientesEnRiesgo(asesor, diasUmbral = 60) {
-  const asesorNorm = asesor ? dashNormNombre(asesor) : null;
+  const asesorNorm = asesor ? dashNormPresup(asesor) : null;
   const ultimaCompra = {};
   DASH_STATE.ventas
     .filter(v => !asesorNorm || dashNormNombre(v.Asesor) === asesorNorm)
@@ -839,3 +864,4 @@ window.dashFiltrarAsesores = dashFiltrarAsesores;
 window.dashDrillAsesor    = dashDrillAsesor;
 window.dashCambiarMes     = dashSelMes;
 window.dashInit           = dashInit;
+window.dashNormPresup     = dashNormPresup;
