@@ -1,78 +1,203 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#111827">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Vinssa Field">
-  <title>Vinssa Field App</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="css/styles.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vinssa Field">
+<title>Vinssa Field App</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/dashboard.css">
 </head>
 <body>
 
-  <div id="screen-login" class="screen active">
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px">
-      <div style="width:64px;height:64px;background:#111827;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:white;margin-bottom:24px">V</div>
-      <h1 style="font-size:22px;font-weight:500;margin-bottom:6px">Vinssa Field App</h1>
-      <p style="font-size:14px;color:var(--muted);margin-bottom:40px;text-align:center">Registro de visitas, demos y oportunidades</p>
-      <button onclick="loginMicrosoft()" style="width:100%;max-width:320px;padding:13px;background:#0078d4;color:white;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">
-        <svg width="20" height="20" viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
-        Entrar con Microsoft
+<!-- ── Login ─────────────────────────────────────────────────────────────── -->
+<div id="screen-login" class="screen active">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px">
+    <div style="width:64px;height:64px;background:#111827;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:white;margin-bottom:24px">V</div>
+    <h1 style="font-size:22px;font-weight:500;margin-bottom:6px">Vinssa Field App</h1>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:40px;text-align:center">Registro de visitas, demos y oportunidades</p>
+    <button onclick="loginMicrosoft()" style="width:100%;max-width:320px;padding:13px;background:#0078d4;color:white;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">
+      <svg width="20" height="20" viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+      Entrar con Microsoft
+    </button>
+    <p style="font-size:12px;color:var(--hint);margin-top:20px;text-align:center">Usa tu correo de Vinssa</p>
+  </div>
+</div>
+
+<!-- ── App ───────────────────────────────────────────────────────────────── -->
+<div id="app" style="display:none">
+
+  <!-- ── Home ──────────────────────────────────────────────────────────── -->
+  <div id="screen-home" class="screen active">
+    <header class="top-bar">
+      <div class="top-bar-info">
+        <span class="top-bar-greeting">Vinssa Field</span>
+        <span class="top-bar-date" id="fecha-hoy"></span>
+      </div>
+      <div class="top-bar-user" id="user-initials" onclick="cerrarSesion()" title="Cerrar sesión" style="cursor:pointer">GP</div>
+    </header>
+    <main class="home-body">
+      <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span id="user-nombre" style="font-weight:500"></span></div>
+      <button class="action-card" id="btn-checkin" onclick="mostrarModalCheckin()">
+        <div class="action-icon icon-blue">C</div>
+        <div>
+          <div class="action-title">¿Estás con un cliente?</div>
+          <div class="action-sub">Registra tu llegada primero</div>
+        </div>
       </button>
-      <p style="font-size:12px;color:var(--hint);margin-top:20px;text-align:center">Usa tu correo de Vinssa</p>
-    </div>
-  </div>
-
-  <div id="app" style="display:none">
-    <div id="screen-home" class="screen active">
-      <header class="top-bar">
-        <div class="top-bar-info">
-          <span class="top-bar-greeting">Vinssa Field</span>
-          <span class="top-bar-date" id="fecha-hoy"></span>
-        </div>
-        <div class="top-bar-user" id="user-initials" onclick="cerrarSesion()" title="Cerrar sesión" style="cursor:pointer">GP</div>
-      </header>
-<main class="home-body">
-        <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span id="user-nombre" style="font-weight:500"></span></div>
-        <button class="action-card" id="btn-checkin" onclick="mostrarModalCheckin()">
-          <div class="action-icon icon-blue">C</div>
-          <div>
-            <div class="action-title">¿Estás con un cliente?</div>
-            <div class="action-sub">Registra tu llegada primero</div>
-          </div>
+      <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
+      <div class="section-label">¿Qué vas a registrar?</div>
+      <div id="registro-btns">
+        <button class="action-card registro-btn" onclick="irA('screen-form','visita')" disabled>
+          <div class="action-icon icon-blue">V</div>
+          <div><div class="action-title">Nueva visita</div><div class="action-sub">Requiere check-in activo</div></div>
         </button>
-        <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
-        <div class="section-label">¿Qué vas a registrar?</div>
-        <div id="registro-btns">
-          <button class="action-card registro-btn" onclick="irA('screen-form','visita')" disabled>
-            <div class="action-icon icon-blue">V</div>
-            <div><div class="action-title">Nueva visita</div><div class="action-sub">Requiere check-in activo</div></div>
-          </button>
-          <button class="action-card registro-btn" onclick="irA('screen-form','demo')" disabled>
-            <div class="action-icon icon-green">D</div>
-            <div><div class="action-title">Demo realizada</div><div class="action-sub">Requiere check-in activo</div></div>
-          </button>
-          <button class="action-card registro-btn" onclick="irA('screen-form','lead')" disabled>
-            <div class="action-icon icon-amber">L</div>
-            <div><div class="action-title">Lead / prospecto</div><div class="action-sub">Requiere check-in activo</div></div>
-          </button>
-          <button class="action-card registro-btn" onclick="irA('screen-form','oportunidad')" disabled>
-            <div class="action-icon icon-gray">O</div>
-            <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Requiere check-in activo</div></div>
-          </button>
-        </div>
-      </main>
-    </div>
-    <div id="screen-form" class="screen"></div>
+        <button class="action-card registro-btn" onclick="irA('screen-form','demo')" disabled>
+          <div class="action-icon icon-green">D</div>
+          <div><div class="action-title">Demo realizada</div><div class="action-sub">Requiere check-in activo</div></div>
+        </button>
+        <button class="action-card registro-btn" onclick="irA('screen-form','lead')" disabled>
+          <div class="action-icon icon-amber">L</div>
+          <div><div class="action-title">Lead / prospecto</div><div class="action-sub">Requiere check-in activo</div></div>
+        </button>
+        <button class="action-card registro-btn" onclick="irA('screen-form','oportunidad')" disabled>
+          <div class="action-icon icon-gray">O</div>
+          <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Requiere check-in activo</div></div>
+        </button>
+      </div>
+    </main>
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+      <button class="bnav-btn active" onclick="navSwitch('screen-home',this)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Registrar</span>
+      </button>
+      <button class="bnav-btn" onclick="navSwitch('screen-dashboard',this)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Resultados</span>
+      </button>
+    </nav>
   </div>
 
-  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/geo.js"></script>
-  <script src="js/sap.js"></script>
-  <script src="js/app.js"></script>
+  <!-- ── Dashboard ─────────────────────────────────────────────────────── -->
+  <div id="screen-dashboard" class="screen" style="display:none">
+    <header class="top-bar">
+      <div class="top-bar-info">
+        <span class="top-bar-greeting">Resultados</span>
+        <span class="top-bar-date" id="dash-fecha"></span>
+      </div>
+      <div class="top-bar-user" id="dash-user-initials" onclick="cerrarSesion()" title="Cerrar sesión" style="cursor:pointer">GP</div>
+    </header>
+
+    <!-- Loader -->
+    <div id="dash-loader" style="display:none;flex-direction:column;align-items:center;justify-content:center;padding:60px 16px;gap:12px">
+      <div class="dash-spinner"></div>
+      <div class="dash-loader-text">Cargando resultados...</div>
+    </div>
+
+    <!-- Contenido del dashboard -->
+    <div id="dashboard-container"></div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+      <button class="bnav-btn" onclick="navSwitch('screen-home',this)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Registrar</span>
+      </button>
+      <button class="bnav-btn active" onclick="navSwitch('screen-dashboard',this)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Resultados</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ── Form ───────────────────────────────────────────────────────────── -->
+  <div id="screen-form" class="screen"></div>
+
+</div><!-- /app -->
+
+<script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/geo.js"></script>
+<script src="js/sap.js"></script>
+<script src="js/app.js"></script>
+<script src="js/dashboard.js"></script>
+<script>
+// ── Navegación bottom nav ─────────────────────────────────────────────────
+let dashCargado = false;
+
+function navSwitch(screenId, btn) {
+  // Ocultar todas las screens
+  document.querySelectorAll('#app .screen').forEach(s => {
+    s.classList.remove('active');
+    s.style.display = 'none';
+  });
+  // Mostrar la seleccionada
+  const target = document.getElementById(screenId);
+  if (target) {
+    target.style.display = 'block';
+    target.classList.add('active');
+  }
+  // Si es dashboard y aún no se ha cargado, inicializar
+  if (screenId === 'screen-dashboard' && !dashCargado) {
+    dashCargado = true;
+    // Sincronizar iniciales en header del dashboard
+    const di = document.getElementById('dash-user-initials');
+    const ui = document.getElementById('user-initials');
+    if (di && ui) di.textContent = ui.textContent;
+    const df = document.getElementById('dash-fecha');
+    const hf = document.getElementById('fecha-hoy');
+    if (df && hf) df.textContent = hf.textContent;
+    dashInit();
+  }
+}
+window.navSwitch = navSwitch;
+</script>
+
+<style>
+/* ── Bottom navigation ─────────────────────────────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: var(--color-background-primary);
+  border-top: 0.5px solid var(--color-border-tertiary);
+  z-index: 100;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.bnav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 4px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-sans);
+  gap: 3px;
+}
+.bnav-btn span {
+  font-size: 10px;
+}
+.bnav-btn.active {
+  color: #185FA5;
+}
+/* Espacio para el bottom nav en las screens */
+.home-body {
+  padding-bottom: 80px;
+}
+</style>
+
 </body>
 </html>
