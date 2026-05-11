@@ -10,6 +10,7 @@ const DASHBOARD_CONFIG = {
   archivos: {
     roles:       'Lista Roles Dashboard.xlsx',
     ventas:      'Ventas Asesor.xlsx',
+    ovs:         'OVs Asesor.xlsx',
     presupuesto: 'Presupuesto Ventas.xlsx'
   },
   // Mapeo GrupoArticulo SAP → División Dashboard
@@ -45,7 +46,8 @@ const DASHBOARD_CONFIG = {
 const DASH_STATE = {
   rol: null,          // 'asesor' | 'lider' | 'gerente'
   userEmail: null,
-  ventas: [],         // filas crudas del Excel de ventas
+  ventas: [],         // facturas (OINV)
+  ovs: [],            // órdenes de venta abiertas (ORDR)
   presupuesto: [],    // filas crudas del Excel de presupuesto
   mesActual: new Date().getMonth() + 1,
   anioActual: new Date().getFullYear(),
@@ -129,10 +131,11 @@ async function dashInit() {
   try {
     const token = await dashGetToken();
 
-    // Leer los tres archivos en paralelo
-    const [roles, ventas, presupuesto] = await Promise.all([
+    // Leer los cuatro archivos en paralelo
+    const [roles, ventas, ovs, presupuesto] = await Promise.all([
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.roles),
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.ventas),
+      dashLeerExcel(token, DASHBOARD_CONFIG.archivos.ovs),
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.presupuesto)
     ]);
 
@@ -149,6 +152,7 @@ async function dashInit() {
     else DASH_STATE.rol = 'asesor';
 
     DASH_STATE.ventas = ventas;
+    DASH_STATE.ovs = ovs;
     DASH_STATE.presupuesto = presupuesto;
 
     dashRender();
@@ -433,7 +437,7 @@ function dashRenderAsesor(container, asesor, mes, anio, isCurrent, mesLabel) {
     </div>
 
     <div id="dash-page-pipeline" class="dash-page">
-      ${dashPipelineHtml()}
+      ${dashPipelineHtml(asesor)}
     </div>
 
     <div id="dash-page-riesgo" class="dash-page">
@@ -719,15 +723,99 @@ function dashAsesorCardHtml(a, clickable) {
   `;
 }
 
-function dashPipelineHtml() {
-  return `
-    <div style="padding:16px">
-      <div class="dash-ctx dash-ctx-info">
+function dashPipelineHtml(asesor) {
+  const asesorNorm = asesor ? dashNormPresup(asesor) : null;
+
+  // Filtrar OVs por asesor si aplica
+  const ovsFiltradas = DASH_STATE.ovs.filter(v => {
+    if (!asesorNorm) return true;
+    return dashNormNombre(v.Asesor) === asesorNorm;
+  });
+
+  if (!ovsFiltradas.length) {
+    return `<div style="padding:24px 16px;text-align:center;color:var(--color-text-secondary);font-size:13px">
+      No hay órdenes de venta abiertas.
+    </div>`;
+  }
+
+  // Calcular total y agrupar por grupo de artículo / división
+  const totalOVs = ovsFiltradas.reduce((s, v) => s + parseFloat(v.Total || 0), 0);
+  const numOVs   = new Set(ovsFiltradas.map(v => v.NumOV)).size;
+
+  // Agrupar por división
+  const porDiv = {};
+  ovsFiltradas.forEach(v => {
+    const grupo = String(v.GrupoArticulo || '').trim();
+    const div   = DASHBOARD_CONFIG.mapaGrupos[grupo] || 'Otros';
+    if (!div || div === null) return;
+    porDiv[div] = (porDiv[div] || 0) + parseFloat(v.Total || 0);
+  });
+
+  // Top 10 OVs por monto
+  const topOVs = Object.values(
+    ovsFiltradas.reduce((acc, v) => {
+      const key = v.NumOV;
+      if (!acc[key]) {
+        acc[key] = {
+          numOV: v.NumOV,
+          cliente: String(v.Cliente || '').trim(),
+          asesor: String(v.Asesor || '').trim(),
+          fecha: v.Fecha,
+          fechaEntrega: v.FechaEntrega || '',
+          total: 0,
+          division: DASHBOARD_CONFIG.mapaGrupos[String(v.GrupoArticulo||'').trim()] || 'Otros'
+        };
+      }
+      acc[key].total += parseFloat(v.Total || 0);
+      return acc;
+    }, {})
+  ).sort((a, b) => b.total - a.total).slice(0, 10);
+
+  const divEntries = Object.entries(porDiv).sort((a, b) => b[1] - a[1]);
+  const maxDiv = divEntries.length ? divEntries[0][1] : 1;
+
+  return \`
+    <div class="pipe-wrap" style="padding-top:14px">
+      <div class="pipe-hdr">
+        <div>
+          <div class="pipe-total">\${dashFmt(totalOVs)}</div>
+          <div class="pipe-sub">pipeline comprometido · \${numOVs} OVs abiertas</div>
+        </div>
+      </div>
+      <div class="dash-ctx dash-ctx-info" style="margin:0 0 12px">
         <div class="dash-cdot"></div>
-        <p>El pipeline se conectará a SAP B1 cuando el certificado SSL esté activo. Por ahora puedes ver las oportunidades registradas en la Field App.</p>
+        <p>Órdenes de venta <strong>abiertas</strong> — comprometidas pero aún no facturadas.</p>
+      </div>
+
+      \${divEntries.map(([div, total]) => {
+        const pct = Math.round(total / totalOVs * 100);
+        const w   = Math.round(total / maxDiv * 100);
+        return \`<div style="margin-bottom:10px;padding:0 16px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary)">\${div}</span>
+            <span style="font-size:12px;color:var(--color-text-secondary)">\${dashFmt(total)} · \${pct}%</span>
+          </div>
+          <div class="dash-pbar"><div class="dash-pfill" style="width:\${w}%;background:#185FA5"></div></div>
+        </div>\`;
+      }).join('')}
+
+      <div style="padding:10px 16px 0">
+        <div class="dash-lbl">Top OVs por monto</div>
+        \${topOVs.map(ov => \`
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--color-border-tertiary)">
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">\${ov.cliente}</div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
+                OV #\${ov.numOV} · \${ov.division}\${ov.fechaEntrega ? ' · Entrega: '+ov.fechaEntrega : ''}
+                \${!asesor ? ' · '+ov.asesor : ''}
+              </div>
+            </div>
+            <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);flex-shrink:0">\${dashFmt(ov.total)}</div>
+          </div>
+        \`).join('')}
       </div>
     </div>
-  `;
+  \`;
 }
 
 function dashRiesgoHtml(clientes, mostrarAsesor = false) {
