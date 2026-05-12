@@ -75,13 +75,17 @@ const DASHBOARD_CONFIG = {
   asesoresSupply: new Set([
     'ALEJANDRO RODRIGUEZ','ARTURO CASTILLO','DANIEL ABASCAL','EDER MORENO',
     'EDUARDO ESPARZA','ENRIQUE CRUZ','FERNANDO MONTANA ALDAZ','FRANCISCO MARTINEZ',
-    'HORACIO MORALES','JORGE OLAGUIVEL','LINO TOVAR','MARIA VILLALOBOS','MAYELA HURTADO',
+    'HORACIO MORALES','JORGE OLAGUIVEL','LINO TOVAR','MARIA VILLALOBOS','MAYELA HURTADO','MOSTRADOR','MOSTRADOR TOR',
     'MIGUEL PEÑALOZA','NEFTALI CRUZ','SALVADOR GARCIA','SERGIO PEREZ FLORES','WENDY SANCHEZ',
     'YATZMIN MONSIVAIS','YULIANA RODRIGUEZ'
   ]),
   // Asesores dedicados de Servicios — activos en 2026
   asesoresServicio: new Set([
     'ALEJANDRO TRUJILLO','ADOLFO PACHECO'
+  ]),
+  // Asesores internos de atención al cliente — visibles solo en Dir·Todos
+  asesoresAtencion: new Set([
+    'JONAS RODRIGUEZ'
   ]),
   // Alias: nombre normalizado en Presupuesto → nombre normalizado en SAP
   mapaAlias: {
@@ -430,11 +434,18 @@ function dashGetAsesores() {
     });
   };
 
+  const addFromAtencionList = () => {
+    DASHBOARD_CONFIG.asesoresAtencion.forEach(nombre => {
+      if (!seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
+    });
+  };
+
   if (!divs) {
-    // Dir·Todos: all divisions
+    // Dir·Todos: all divisions + internal atencion al cliente
     addFromPresupuesto(null);   // Trazabilidad
     addFromSupplyList();         // Suministros
     addFromServicioList();       // Servicios
+    addFromAtencionList();       // Atencion al cliente interno
   } else if (divs.includes('Suministros')) {
     addFromSupplyList();
   } else if (divs.includes('Servicios')) {
