@@ -178,13 +178,15 @@ async function dashInit() {
 
 // ── Obtener total en USD de una fila de ventas ───────────────────────────────
 function dashGetTotal(v) {
-  // Soporta columnas: Total, TotalUSD, TotalFrgn
-  const direct = parseFloat(v.Total || v.TotalUSD || v.TotalFrgn || 0);
-  if (direct > 0) return direct;
+  // Soporta columnas: Total, TotalUSD, TotalFrgn (incluye negativos para notas de crédito)
+  const direct = parseFloat(v.Total !== undefined && v.Total !== '' ? v.Total : 
+                            v.TotalUSD !== undefined && v.TotalUSD !== '' ? v.TotalUSD :
+                            v.TotalFrgn !== undefined && v.TotalFrgn !== '' ? v.TotalFrgn : 0);
+  if (direct !== 0) return direct;
   // Fallback: TotalMXP / TipoCambio
   const mxp = parseFloat(v.TotalMXP || 0);
   const tc  = parseFloat(v.TipoCambio || 1) || 1;
-  return mxp > 0 ? mxp / tc : 0;
+  return mxp !== 0 ? mxp / tc : 0;
 }
 
 // ── Normalizar nombre: quita acentos y pasa a mayúsculas ────────────────────
