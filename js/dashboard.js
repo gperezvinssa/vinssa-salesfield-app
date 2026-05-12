@@ -280,6 +280,7 @@ function dashCalcMetricas(asesor, mes, anio, divisionesVisibles) {
   });
 
   const totalVenta = ventasFiltradas.reduce((s, v) => s + dashGetTotal(v), 0);
+  // totalVenta includes credit notes (negative) — this is correct net sales
   const numOVs = new Set(ventasFiltradas.map(v => v.NumOV)).size;
 
   // Presupuesto del asesor para ese mes
@@ -325,11 +326,11 @@ function dashCalcMetricas(asesor, mes, anio, divisionesVisibles) {
 }
 
 // ── Calcular histórico anual de un asesor ────────────────────────────────────
-function dashHistoricoAnual(asesor, anio) {
+function dashHistoricoAnual(asesor, anio, divisionesVisibles) {
   const meses = [];
   for (let m = 1; m <= 12; m++) {
-    const met = dashCalcMetricas(asesor, m, anio);
-    const metAnterior = dashCalcMetricas(asesor, m, anio - 1);
+    const met = dashCalcMetricas(asesor, m, anio, divisionesVisibles);
+    const metAnterior = dashCalcMetricas(asesor, m, anio - 1, divisionesVisibles);
     meses.push({
       mes: m,
       label: DASHBOARD_CONFIG.meses[m-1],
@@ -353,16 +354,22 @@ function dashHistoricoAnual(asesor, anio) {
 
 // ── Obtener lista única de asesores con presupuesto (nombres SAP normalizados) ─
 function dashGetAsesores() {
-  // Retorna nombres como aparecen en el presupuesto (para mostrar en UI)
-  // pero internamente se buscan en SAP con alias
+  // Para División = Todos (Director), incluir todos los asesores del presupuesto
+  // Para otras divisiones, solo los asesores con presupuesto en esa división
+  const divs = dashGetDivisionesVisibles(); // null = Todos
   const seen = new Set();
   const result = [];
+
   DASH_STATE.presupuesto.forEach(p => {
     const nombre = String(p.Asesor || '').trim();
-    if (nombre && !seen.has(nombre)) {
-      seen.add(nombre);
-      result.push(nombre);
+    if (!nombre || seen.has(nombre)) return;
+    // Si hay filtro de divisiones, solo incluir asesores con presupuesto en esa división
+    if (divs) {
+      const pDiv = String(p.Division || '').trim();
+      if (!divs.includes(pDiv)) return;
     }
+    seen.add(nombre);
+    result.push(nombre);
   });
   return result;
 }
@@ -433,12 +440,14 @@ function dashColor(pct) {
 
 // ── Obtener divisiones visibles para el usuario actual ───────────────────────
 function dashGetDivisionesVisibles() {
-  const div = DASH_STATE.division || 'Todos';
-  if (div === 'Todos') return null; // null = ver todo
-  if (div === 'Trazabilidad') return ['Trazabilidad', 'Visión', 'Robótica'];
-  if (div === 'Suministros') return ['Suministros'];
-  if (div === 'Servicios') return ['Servicios'];
-  return null;
+  const div = String(DASH_STATE.division || 'Todos').trim();
+  if (div === 'Todos' || div === '' || div === 'todos') return null; // null = ver todo
+  // Normalize accents
+  const divNorm = div.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (divNorm === 'trazabilidad') return ['Trazabilidad', 'Visión', 'Robótica'];
+  if (divNorm === 'suministros') return ['Suministros'];
+  if (divNorm === 'servicios') return ['Servicios'];
+  return null; // default: ver todo
 }
 
 // Verificar si un grupo de artículo es visible para el usuario
@@ -474,15 +483,16 @@ function dashRender() {
 
 // ── Render vista Asesor ──────────────────────────────────────────────────────
 function dashRenderAsesor(container, asesor, mes, anio, isCurrent, mesLabel) {
-  const met = dashCalcMetricas(asesor, mes, anio);
-  const hist = dashHistoricoAnual(asesor, anio);
+  const divsVisible = dashGetDivisionesVisibles();
+  const met = dashCalcMetricas(asesor, mes, anio, divsVisible);
+  const hist = dashHistoricoAnual(asesor, anio, divsVisible);
   const riesgo = dashClientesEnRiesgo(asesor, 60);
   const ctx = dashMensajeCtx(met.pct, met.falta, met.diasRestantes, met.ritmo, isCurrent);
   const col = dashColor(met.pct);
 
   container.innerHTML = `
     <div class="dash-tabs">
-      <button class="dash-tab active" onclick="dashTabSwitch('resultados',this)">Resultados</button>
+      <button class="dash-tab active" onclick="dashTabSwitch('resultados',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('pipeline',this)">Pipeline</button>
       <button class="dash-tab" onclick="dashTabSwitch('riesgo',this)">En riesgo</button>
     </div>
@@ -513,7 +523,7 @@ function dashRenderAsesor(container, asesor, mes, anio, isCurrent, mesLabel) {
     </div>
 
     <div id="dash-page-pipeline" class="dash-page">
-      ${dashPipelineHtml(asesor)}
+      ${dashPipelineHtml(asesor, dashGetDivisionesVisibles())}
     </div>
 
     <div id="dash-page-riesgo" class="dash-page">
@@ -542,11 +552,12 @@ function dashRenderLider(container, mes, anio, isCurrent, mesLabel) {
   const pctEquipo   = metaEquipo > 0 ? Math.round(totalEquipo / metaEquipo * 100) : 0;
   const col = dashColor(pctEquipo);
 
-  const enRiesgo = dashClientesEnRiesgo(null, 60);
+  const enRiesgo = dashClientesEnRiesgo(null, 60, divsVisible);
 
   container.innerHTML = `
     <div class="dash-tabs">
-      <button class="dash-tab active" onclick="dashTabSwitch('l-resultados',this)">Resultados</button>
+      <button class="dash-tab active" onclick="dashTabSwitch('l-resultados',this)">Resumen</button>
+      <button class="dash-tab" onclick="dashTabSwitch('l-pipeline',this)">Pipeline</button>
       <button class="dash-tab" onclick="dashTabSwitch('l-riesgo',this)">En riesgo</button>
     </div>
 
@@ -569,6 +580,38 @@ function dashRenderLider(container, mes, anio, isCurrent, mesLabel) {
       </div>
       <div class="dash-lbl" style="padding:12px 16px 6px">Mi equipo · detalle</div>
       ${equipo.map(a => dashAsesorCardHtml(a, false)).join('')}
+    </div>
+
+    <div id="dash-page-l-pipeline" class="dash-page">
+      ${dashPipelineHtml(null, divsVisible)}
+    </div>
+
+    <div id="dash-page-l-asesores" class="dash-page">
+      <div class="dash-filter-row">
+        <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this)">Todos</button>
+        <button class="dash-fchip" onclick="dashFiltrarAsesores('riesgo',this)">En riesgo</button>
+        <button class="dash-fchip" onclick="dashFiltrarAsesores('meta',this)">En meta</button>
+      </div>
+      <div id="dash-asesores-lista">
+        ${equipo.map(a => dashAsesorCardHtml(a, true)).join('')}
+      </div>
+      <div style="height:16px"></div>
+    </div>
+
+    <div id="dash-page-l-pipeline" class="dash-page">
+      ${dashPipelineHtml(null, divsVisible)}
+    </div>
+
+    <div id="dash-page-l-asesores" class="dash-page">
+      <div class="dash-filter-row">
+        <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this)">Todos</button>
+        <button class="dash-fchip" onclick="dashFiltrarAsesores('riesgo',this)">En riesgo</button>
+        <button class="dash-fchip" onclick="dashFiltrarAsesores('meta',this)">En meta</button>
+      </div>
+      <div id="dash-asesores-lista">
+        ${equipo.map(a => dashAsesorCardHtml(a, true)).join('')}
+      </div>
+      <div style="height:16px"></div>
     </div>
 
     <div id="dash-page-l-riesgo" class="dash-page">
@@ -989,7 +1032,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
   const urgentesCount = ovsConsolidadas.filter(o => o.semaforo === 'urgente').length;
 
   return `
-    <div style="padding-bottom:16px">
+    <div style="padding-bottom:80px;overflow:visible">
 
       <!-- OPORTUNIDADES -->
       <div class="pipe-wrap" style="padding-top:14px">
@@ -1041,7 +1084,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
                     </div>
                     <div style="text-align:right;flex-shrink:0">
                       <div style="font-size:12px;font-weight:500;color:var(--color-text-primary)">${dashFmt(o.monto)}</div>
-                      <div style="font-size:10px;color:var(--color-text-secondary)">${o.Probabilidad || cfg.pct}% · ${o.Moneda || 'MXP'}</div>
+                      <div style="font-size:10px;color:var(--color-text-secondary)">${o.Probabilidad || cfg.pct}%</div>
                     </div>
                   </div>
                 `).join('')}
@@ -1232,9 +1275,8 @@ window.dashInit           = dashInit;
   const s = document.createElement('style');
   s.textContent = `
     .dash-chevron.rotated { transform: rotate(180deg); }
-    .dash-page { overflow: hidden; }
-    .dash-page.active { overflow: visible; }
-    .dash-annual { position: relative; z-index: 0; }
+    .dash-page { display: none !important; overflow: hidden; }
+    .dash-page.active { display: block !important; overflow-y: auto; }
   `;
   document.head.appendChild(s);
 })();
