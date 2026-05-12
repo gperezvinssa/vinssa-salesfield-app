@@ -10,7 +10,7 @@ const DASHBOARD_CONFIG = {
   archivos: {
     roles:       'Lista Roles Dashboard.xlsx',
     ventas:      'Ventas Asesor v2.xlsx',
-    ovs:         'OVs asesor.xlsx',
+    ovs:         'OVs Asesor.xlsx',
     presupuesto: 'Presupuesto Ventas.xlsx'
   },
   // Mapeo GrupoArticulo SAP → División Dashboard
@@ -131,6 +131,9 @@ function excelValuesToObjects(values) {
 // ── Inicializar Dashboard ────────────────────────────────────────────────────
 async function dashInit() {
   dashMostrarLoader(true);
+  // Limpiar caché de driveId y token para forzar lectura fresca
+  DASH_STATE.driveId = null;
+  DASH_STATE.token = null;
   try {
     const token = await dashGetToken();
 
