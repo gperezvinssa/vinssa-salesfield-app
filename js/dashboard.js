@@ -772,6 +772,7 @@ function dashPeriodSelector(mesLabel, isCurrent, fn) {
             ${futuro ? 'disabled' : `onclick="dashSelMes(${num},this)"`}
             >${m}${num === mesActual ? ' ●' : ''}</button>`;
         }).join('')}
+        </div>
       </div>
     </div>
   `;
@@ -921,9 +922,17 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
     if (!porEtapa[etapa]) porEtapa[etapa] = { opps: [], total: 0, ponderado: 0 };
     const monto = parseFloat(o.MontoEstimado || 0);
     const pond  = parseFloat(o.MontoPonderado || 0) || monto * (parseFloat(o.Probabilidad||0)/100);
-    porEtapa[etapa].opps.push({ ...o, monto, pond });
+    // Calcular días abierta
+    const fApertura = dashParseFecha(o.FechaApertura);
+    const diasAbierta = fApertura ? Math.floor((hoy - fApertura) / (1000*60*60*24)) : null;
+    porEtapa[etapa].opps.push({ ...o, monto, pond, diasAbierta });
     porEtapa[etapa].total += monto;
     porEtapa[etapa].ponderado += pond;
+  });
+
+  // Ordenar oportunidades por monto descendente dentro de cada etapa
+  Object.values(porEtapa).forEach(e => {
+    e.opps.sort((a, b) => b.monto - a.monto);
   });
 
   const totalOpps = opps.length;
@@ -970,12 +979,10 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
       return acc;
     }, {})
   ).sort((a, b) => {
-    // Ordenar: vencidas primero (más antiguas primero), luego urgentes (más próximas primero), luego ok por fecha
-    const order = { vencida: 0, urgente: 1, ok: 2 };
-    if (order[a.semaforo] !== order[b.semaforo]) return order[a.semaforo] - order[b.semaforo];
-    if (a.semaforo === 'vencida') return a.diasEntrega - b.diasEntrega; // más negativo = más vencida
-    if (a.semaforo === 'urgente') return a.diasEntrega - b.diasEntrega; // menos días = más urgente
-    return a.diasEntrega - b.diasEntrega;
+    // Ordenar por fecha de entrega: vencidas más antiguas primero, luego por fecha ascendente
+    const da = a.diasEntrega !== null ? a.diasEntrega : 9999;
+    const db = b.diasEntrega !== null ? b.diasEntrega : 9999;
+    return da - db;
   });
 
   const vencidasCount = ovsConsolidadas.filter(o => o.semaforo === 'vencida').length;
@@ -1020,7 +1027,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
                 </div>
                 <div class="dash-chevron" style="font-size:12px;color:var(--color-text-tertiary);transition:transform 0.2s">▾</div>
               </div>
-              <div id="${isOpen}" style="display:none;padding-bottom:8px">
+              <div id="${isOpen}" style="display:none;padding-bottom:8px;max-height:320px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                 ${data.opps.map(o => `
                   <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0 7px 18px;border-top:0.5px solid var(--color-border-tertiary)">
                     <div style="flex:1">
@@ -1029,6 +1036,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
                         ${o.Descripcion || ''}${o.Marca ? ' · '+o.Marca : ''}${o.Linea ? ' · '+o.Linea : ''}
                         ${!asesor ? ' · '+o.Asesor : ''}
                         · Cierre: ${o.FechaCierre || '—'}
+                        ${o.diasAbierta !== null ? ' · <span style="color:'+( o.diasAbierta > 90 ? '#A32D2D' : o.diasAbierta > 30 ? '#BA7517' : 'var(--color-text-tertiary)')+'">'+o.diasAbierta+' días abierta</span>' : ''}
                       </div>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
@@ -1078,6 +1086,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
             </div>
           `;
         }).join('')}
+        </div>
       </div>
     </div>
   `;
