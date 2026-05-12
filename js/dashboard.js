@@ -8,10 +8,11 @@
 const DASHBOARD_CONFIG = {
   siteId: 'versatilidadsaltillo.sharepoint.com,/sites/VINSSAAutomation',
   archivos: {
-    roles:       'Lista Roles Dashboard.xlsx',
-    ventas:      'Ventas Asesor v2.xlsx',
-    ovs:         'OVs Asesor.xlsx',
-    presupuesto: 'Presupuesto Ventas.xlsx'
+    roles:          'Lista Roles Dashboard.xlsx',
+    ventas:         'Ventas Asesor v2.xlsx',
+    ovs:            'OVs Asesor.xlsx',
+    oportunidades:  'Oportunidades.xlsx',
+    presupuesto:    'Presupuesto Ventas.xlsx'
   },
   // Mapeo GrupoArticulo SAP → División Dashboard
   mapaGrupos: {
@@ -32,6 +33,17 @@ const DASHBOARD_CONFIG = {
     'Vending Machines':        null  // ignorar
   },
   meses: ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],
+  // Etapas de oportunidades con orden, probabilidad y color
+  etapas: {
+    'Contacto Inicial':       { orden: 1, pct: 10, color: '#B4B2A9' },
+    'Cotización':             { orden: 2, pct: 25, color: '#BA7517' },
+    'Pruebas / Demostración': { orden: 3, pct: 60, color: '#1D9E75' },
+    'Negociación':            { orden: 4, pct: 80, color: '#185FA5' },
+    'Trámite con Compras':    { orden: 5, pct: 90, color: '#5B2D8E' },
+    'Factura':                { orden: 6, pct: 95, color: '#639922' }
+  },
+  // Divisiones visibles por rol gerente (filtra pipeline)
+  divisionesTrazabilidad: ['Trazabilidad', 'Visión', 'Robótica'],
   // Alias: nombre normalizado en Presupuesto → nombre normalizado en SAP
   mapaAlias: {
     'JONATHAN ROCHE':     'JONATHAN ROCHE TOR',
@@ -45,9 +57,11 @@ const DASHBOARD_CONFIG = {
 // Estado global del dashboard
 const DASH_STATE = {
   rol: null,          // 'asesor' | 'lider' | 'gerente'
+  division: 'Todos',  // división del usuario — filtra pipeline y datos
   userEmail: null,
   ventas: [],         // facturas (OINV)
   ovs: [],            // órdenes de venta abiertas (ORDR)
+  oportunidades: [],  // oportunidades CRM (OOPR)
   presupuesto: [],    // filas crudas del Excel de presupuesto
   mesActual: new Date().getMonth() + 1,
   anioActual: new Date().getFullYear(),
@@ -137,18 +151,22 @@ async function dashInit() {
   try {
     const token = await dashGetToken();
 
-    // Leer archivos — OVs es opcional
+    // Leer archivos en paralelo — OVs y Oportunidades son opcionales
     const [roles, ventas, presupuesto] = await Promise.all([
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.roles),
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.ventas),
       dashLeerExcel(token, DASHBOARD_CONFIG.archivos.presupuesto)
     ]);
-    // OVs opcional — no bloquea si no existe
-    let ovs = [];
+    let ovs = [], oportunidades = [];
     try {
       ovs = await dashLeerExcel(token, DASHBOARD_CONFIG.archivos.ovs);
     } catch(e) {
-      console.warn('OVs Asesor.xlsx no encontrado — pipeline sin datos:', e.message);
+      console.warn('OVs Asesor.xlsx no encontrado:', e.message);
+    }
+    try {
+      oportunidades = await dashLeerExcel(token, DASHBOARD_CONFIG.archivos.oportunidades);
+    } catch(e) {
+      console.warn('Oportunidades.xlsx no encontrado:', e.message);
     }
 
     // Determinar rol del usuario actual
@@ -157,6 +175,7 @@ async function dashInit() {
       String(r.Email || '').toLowerCase().trim() === emailActual
     );
     DASH_STATE.rol = userRole ? String(userRole.Rol || '').toLowerCase().trim() : 'asesor';
+    DASH_STATE.division = userRole ? String(userRole.Division || userRole.División || 'Todos').trim() : 'Todos';
 
     // Normalizar rol
     if (DASH_STATE.rol.includes('gerente')) DASH_STATE.rol = 'gerente';
@@ -165,6 +184,7 @@ async function dashInit() {
 
     DASH_STATE.ventas = ventas;
     DASH_STATE.ovs = ovs;
+    DASH_STATE.oportunidades = oportunidades;
     DASH_STATE.presupuesto = presupuesto;
 
     dashRender();
@@ -231,7 +251,7 @@ function dashParseFecha(val) {
 }
 
 // ── Calcular métricas para un asesor/mes/año ─────────────────────────────────
-function dashCalcMetricas(asesor, mes, anio) {
+function dashCalcMetricas(asesor, mes, anio, divisionesVisibles) {
   // asesor viene del presupuesto — aplicar alias para buscar en SAP
   const asesorNorm = dashNormPresup(asesor);
   const ventasFiltradas = DASH_STATE.ventas.filter(v => {
@@ -241,7 +261,13 @@ function dashCalcMetricas(asesor, mes, anio) {
     const vMes = fecha.getMonth() + 1;
     const vAnio = fecha.getFullYear();
     const vAsesor = dashNormNombre(v.Asesor);
-    return vMes === mes && vAnio === anio && vAsesor === asesorNorm;
+    if (vMes !== mes || vAnio !== anio || vAsesor !== asesorNorm) return false;
+    // Filtrar por división si aplica
+    if (divisionesVisibles) {
+      const div = DASHBOARD_CONFIG.mapaGrupos[String(v.GrupoArticulo||'').trim()];
+      return divisionesVisibles.includes(div);
+    }
+    return true;
   });
 
   // Agrupar por división usando el mapa de grupos
@@ -405,6 +431,24 @@ function dashColor(pct) {
   return { bar: '#D85A30', pct: '#A32D2D', pill: 'pill-red' };
 }
 
+// ── Obtener divisiones visibles para el usuario actual ───────────────────────
+function dashGetDivisionesVisibles() {
+  const div = DASH_STATE.division || 'Todos';
+  if (div === 'Todos') return null; // null = ver todo
+  if (div === 'Trazabilidad') return ['Trazabilidad', 'Visión', 'Robótica'];
+  if (div === 'Suministros') return ['Suministros'];
+  if (div === 'Servicios') return ['Servicios'];
+  return null;
+}
+
+// Verificar si un grupo de artículo es visible para el usuario
+function dashGrupoVisible(grupoArticulo) {
+  const divs = dashGetDivisionesVisibles();
+  if (!divs) return true; // ver todo
+  const div = DASHBOARD_CONFIG.mapaGrupos[String(grupoArticulo || '').trim()];
+  return divs.includes(div);
+}
+
 // ── Render principal ─────────────────────────────────────────────────────────
 function dashRender() {
   const container = document.getElementById('dashboard-container');
@@ -486,9 +530,10 @@ function dashRenderAsesor(container, asesor, mes, anio, isCurrent, mesLabel) {
 // ── Render vista Líder ───────────────────────────────────────────────────────
 function dashRenderLider(container, mes, anio, isCurrent, mesLabel) {
   const asesores = dashGetAsesores();
-  // Calcular métricas de todos los asesores
+  const divsVisible = dashGetDivisionesVisibles();
+  // Calcular métricas de todos los asesores — filtrar por división si aplica
   const equipo = asesores.map(a => {
-    const met = dashCalcMetricas(a, mes, anio);
+    const met = dashCalcMetricas(a, mes, anio, divsVisible);
     return { nombre: a, ...met };
   }).filter(a => a.totalMeta > 0 || a.totalVenta > 0);
 
@@ -543,8 +588,9 @@ function dashRenderLider(container, mes, anio, isCurrent, mesLabel) {
 // ── Render vista Gerente ─────────────────────────────────────────────────────
 function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
   const asesores = dashGetAsesores();
+  const divsVisible = dashGetDivisionesVisibles();
   const equipo = asesores.map(a => {
-    const met = dashCalcMetricas(a, mes, anio);
+    const met = dashCalcMetricas(a, mes, anio, divsVisible);
     return { nombre: a, ...met };
   }).filter(a => a.totalMeta > 0 || a.totalVenta > 0);
 
@@ -627,7 +673,7 @@ function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
     </div>
 
     <div id="dash-page-g-pipeline" class="dash-page">
-      ${dashPipelineHtml(null)}
+      ${dashPipelineHtml(null, dashGetDivisionesVisibles())}
     </div>
 
     <div id="dash-page-g-asesores" class="dash-page">
@@ -681,11 +727,12 @@ function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
 // ── Histórico anual consolidado empresa ──────────────────────────────────────
 function dashHistoricoAnualEmpresa(asesores, anio) {
   const meses = [];
+  const divsVis = dashGetDivisionesVisibles();
   for (let m = 1; m <= 12; m++) {
     let venta = 0, meta = 0, ventaAnterior = 0;
     asesores.forEach(a => {
-      const met = dashCalcMetricas(a, m, anio);
-      const metAnt = dashCalcMetricas(a, m, anio - 1);
+      const met = dashCalcMetricas(a, m, anio, divsVis);
+      const metAnt = dashCalcMetricas(a, m, anio - 1, divsVis);
       venta += met.totalVenta;
       meta  += met.totalMeta;
       ventaAnterior += metAnt.totalVenta;
@@ -848,45 +895,73 @@ function dashAsesorCardHtml(a, clickable) {
   `;
 }
 
-function dashPipelineHtml(asesor) {
+function dashPipelineHtml(asesor, divisionesVisibles) {
   const asesorNorm = asesor ? dashNormPresup(asesor) : null;
+  const hoy = new Date();
 
-  // Filtrar OVs por asesor si aplica
-  const ovsFiltradas = DASH_STATE.ovs.filter(v => {
-    if (!asesorNorm) return true;
-    return dashNormNombre(v.Asesor) === asesorNorm;
+  // ── OPORTUNIDADES POR ETAPA ────────────────────────────────────────────────
+  const etapasConfig = DASHBOARD_CONFIG.etapas;
+  const etapasOrder = Object.keys(etapasConfig);
+
+  let opps = DASH_STATE.oportunidades.filter(o => {
+    if (asesorNorm && dashNormNombre(o.Asesor) !== asesorNorm) return false;
+    if (divisionesVisibles) {
+      const linea = String(o.Linea || '').trim();
+      return divisionesVisibles.some(d => linea.toLowerCase().includes(d.toLowerCase()));
+    }
+    return true;
   });
 
-  if (!ovsFiltradas.length) {
-    return `<div style="padding:24px 16px;text-align:center;color:var(--color-text-secondary);font-size:13px">
-      No hay órdenes de venta abiertas.
-    </div>`;
-  }
+  // Agrupar oportunidades por etapa
+  const porEtapa = {};
+  etapasOrder.forEach(e => porEtapa[e] = { opps: [], total: 0, ponderado: 0 });
 
-  // Calcular total y agrupar por grupo de artículo / división
+  opps.forEach(o => {
+    const etapa = String(o.Etapa || '').trim();
+    if (!porEtapa[etapa]) porEtapa[etapa] = { opps: [], total: 0, ponderado: 0 };
+    const monto = parseFloat(o.MontoEstimado || 0);
+    const pond  = parseFloat(o.MontoPonderado || 0) || monto * (parseFloat(o.Probabilidad||0)/100);
+    porEtapa[etapa].opps.push({ ...o, monto, pond });
+    porEtapa[etapa].total += monto;
+    porEtapa[etapa].ponderado += pond;
+  });
+
+  const totalOpps = opps.length;
+  const totalMonto = opps.reduce((s, o) => s + parseFloat(o.MontoEstimado || 0), 0);
+  const totalPond  = opps.reduce((s, o) => s + parseFloat(o.MontoPonderado || 0), 0);
+
+  // ── OVS ABIERTAS ──────────────────────────────────────────────────────────
+  let ovsFiltradas = DASH_STATE.ovs.filter(v => {
+    if (asesorNorm && dashNormNombre(v.Asesor) !== asesorNorm) return false;
+    if (divisionesVisibles) {
+      const div = DASHBOARD_CONFIG.mapaGrupos[String(v.GrupoArticulo||'').trim()];
+      return divisionesVisibles.includes(div);
+    }
+    return true;
+  });
+
   const totalOVs = ovsFiltradas.reduce((s, v) => s + dashGetTotal(v), 0);
   const numOVs   = new Set(ovsFiltradas.map(v => v.NumOV)).size;
 
-  // Agrupar por división
-  const porDiv = {};
-  ovsFiltradas.forEach(v => {
-    const grupo = String(v.GrupoArticulo || '').trim();
-    const div   = DASHBOARD_CONFIG.mapaGrupos[grupo] || 'Otros';
-    if (!div || div === null) return;
-    porDiv[div] = (porDiv[div] || 0) + dashGetTotal(v);
-  });
-
-  // Top 10 OVs por monto
-  const topOVs = Object.values(
+  // Consolidar OVs por número
+  const ovsConsolidadas = Object.values(
     ovsFiltradas.reduce((acc, v) => {
-      const key = v.NumOV;
+      const key = String(v.NumOV);
       if (!acc[key]) {
+        const fe = dashParseFecha(v.FechaEntrega || v.Fecha);
+        const diasEntrega = fe ? Math.floor((fe - hoy) / (1000*60*60*24)) : null;
+        let semaforo = 'ok';
+        if (diasEntrega !== null) {
+          if (diasEntrega < 0) semaforo = 'vencida';
+          else if (diasEntrega <= 7) semaforo = 'urgente';
+        }
         acc[key] = {
           numOV: v.NumOV,
           cliente: String(v.Cliente || '').trim(),
           asesor: String(v.Asesor || '').trim(),
-          fecha: v.Fecha,
           fechaEntrega: v.FechaEntrega || '',
+          diasEntrega,
+          semaforo,
           total: 0,
           division: DASHBOARD_CONFIG.mapaGrupos[String(v.GrupoArticulo||'').trim()] || 'Otros'
         };
@@ -894,50 +969,113 @@ function dashPipelineHtml(asesor) {
       acc[key].total += dashGetTotal(v);
       return acc;
     }, {})
-  ).sort((a, b) => b.total - a.total).slice(0, 10);
+  ).sort((a, b) => {
+    // Ordenar: vencidas primero, luego urgentes, luego por monto
+    const order = { vencida: 0, urgente: 1, ok: 2 };
+    if (order[a.semaforo] !== order[b.semaforo]) return order[a.semaforo] - order[b.semaforo];
+    return b.total - a.total;
+  });
 
-  const divEntries = Object.entries(porDiv).sort((a, b) => b[1] - a[1]);
-  const maxDiv = divEntries.length ? divEntries[0][1] : 1;
+  const vencidasCount = ovsConsolidadas.filter(o => o.semaforo === 'vencida').length;
+  const urgentesCount = ovsConsolidadas.filter(o => o.semaforo === 'urgente').length;
 
   return `
-    <div class="pipe-wrap" style="padding-top:14px">
-      <div class="pipe-hdr">
-        <div>
-          <div class="pipe-total">${dashFmt(totalOVs)}</div>
-          <div class="pipe-sub">pipeline comprometido · ${numOVs} OVs abiertas</div>
-        </div>
-      </div>
-      <div class="dash-ctx dash-ctx-info" style="margin:0 0 12px">
-        <div class="dash-cdot"></div>
-        <p>Órdenes de venta <strong>abiertas</strong> — comprometidas pero aún no facturadas.</p>
-      </div>
+    <div style="padding-bottom:16px">
 
-      ${divEntries.map(([div, total]) => {
-        const pct = Math.round(total / totalOVs * 100);
-        const w   = Math.round(total / maxDiv * 100);
-        return `<div style="margin-bottom:10px;padding:0 16px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary)">${div}</span>
-            <span style="font-size:12px;color:var(--color-text-secondary)">${dashFmt(total)} · ${pct}%</span>
+      <!-- OPORTUNIDADES -->
+      <div class="pipe-wrap" style="padding-top:14px">
+        <div class="pipe-hdr">
+          <div>
+            <div class="pipe-total">${dashFmt(totalMonto)}</div>
+            <div class="pipe-sub">pipeline oportunidades · ${totalOpps} abiertas</div>
           </div>
-          <div class="dash-pbar"><div class="dash-pfill" style="width:${w}%;background:#185FA5"></div></div>
-        </div>`;
-      }).join('')}
+          <div style="text-align:right">
+            <div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">${dashFmt(totalPond)}</div>
+            <div style="font-size:11px;color:var(--color-text-secondary)">ponderado</div>
+          </div>
+        </div>
 
-      <div style="padding:10px 16px 0">
-        <div class="dash-lbl">Top OVs por monto</div>
-        ${topOVs.map(ov => `
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--color-border-tertiary)">
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${ov.cliente}</div>
-              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
-                OV #${ov.numOV} · ${ov.division}${ov.fechaEntrega ? ' · Entrega: '+ov.fechaEntrega : ''}
-                ${!asesor ? ' · '+ov.asesor : ''}
+        ${etapasOrder.map(etapa => {
+          const cfg = etapasConfig[etapa];
+          const data = porEtapa[etapa];
+          if (!data || !data.opps.length) return '';
+          const isOpen = `dash-etapa-${etapa.replace(/[^a-z0-9]/gi,'-')}`;
+          return `
+            <div style="border-bottom:0.5px solid var(--color-border-tertiary)">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer"
+                   onclick="document.getElementById('${isOpen}').classList.toggle('open');this.querySelector('.dash-chevron').classList.toggle('rotated')">
+                <div style="width:8px;height:8px;border-radius:50%;background:${cfg.color};flex-shrink:0"></div>
+                <div style="flex:1">
+                  <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${etapa} · ${cfg.pct}%</div>
+                  <div style="font-size:11px;color:var(--color-text-secondary);margin-top:1px">${data.opps.length} oportunidades</div>
+                  <div style="height:3px;background:var(--color-border-tertiary);border-radius:2px;overflow:hidden;margin-top:5px">
+                    <div style="height:100%;width:${Math.min(Math.round(data.total/totalMonto*100),100)}%;background:${cfg.color};border-radius:2px"></div>
+                  </div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${dashFmt(data.total)}</div>
+                  <div style="font-size:11px;color:var(--color-text-secondary)">${dashFmt(data.ponderado)} pond.</div>
+                </div>
+                <div class="dash-chevron" style="font-size:12px;color:var(--color-text-tertiary);transition:transform 0.2s">▾</div>
+              </div>
+              <div id="${isOpen}" style="display:none;padding-bottom:8px">
+                ${data.opps.map(o => `
+                  <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0 7px 18px;border-top:0.5px solid var(--color-border-tertiary)">
+                    <div style="flex:1">
+                      <div style="font-size:12px;font-weight:500;color:var(--color-text-primary)">${o.CardName || o.Cliente}</div>
+                      <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
+                        ${o.Descripcion || ''}${o.Marca ? ' · '+o.Marca : ''}${o.Linea ? ' · '+o.Linea : ''}
+                        ${!asesor ? ' · '+o.Asesor : ''}
+                        · Cierre: ${o.FechaCierre || '—'}
+                      </div>
+                    </div>
+                    <div style="text-align:right;flex-shrink:0">
+                      <div style="font-size:12px;font-weight:500;color:var(--color-text-primary)">${dashFmt(o.monto)}</div>
+                      <div style="font-size:10px;color:var(--color-text-secondary)">${o.Probabilidad || cfg.pct}%</div>
+                    </div>
+                  </div>
+                `).join('')}
               </div>
             </div>
-            <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);flex-shrink:0">${dashFmt(ov.total)}</div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- OVS ABIERTAS -->
+      <div class="pipe-wrap" style="padding-top:16px">
+        <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:14px"></div>
+        <div class="pipe-hdr">
+          <div>
+            <div class="pipe-total">${dashFmt(totalOVs)}</div>
+            <div class="pipe-sub">OVs comprometidas · ${numOVs} abiertas</div>
           </div>
-        `).join('')}
+          ${vencidasCount > 0 || urgentesCount > 0 ? `
+          <div style="text-align:right">
+            ${vencidasCount > 0 ? `<div style="font-size:11px;color:#A32D2D;font-weight:500">⚠️ ${vencidasCount} vencidas</div>` : ''}
+            ${urgentesCount > 0 ? `<div style="font-size:11px;color:#BA7517;font-weight:500">🔔 ${urgentesCount} esta semana</div>` : ''}
+          </div>` : ''}
+        </div>
+        ${!ovsConsolidadas.length ? `
+          <div style="padding:16px;text-align:center;color:var(--color-text-secondary);font-size:13px">No hay OVs abiertas.</div>
+        ` : ovsConsolidadas.slice(0,20).map(ov => {
+          const sColor = ov.semaforo === 'vencida' ? '#E24B4A' : ov.semaforo === 'urgente' ? '#EF9F27' : '#3B6D11';
+          const sLabel = ov.semaforo === 'vencida' ? `⚠️ Vencida hace ${Math.abs(ov.diasEntrega)} días` :
+                         ov.semaforo === 'urgente' ? `🔔 Entrega en ${ov.diasEntrega} días` :
+                         ov.fechaEntrega ? `Entrega: ${ov.fechaEntrega}` : '';
+          return `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--color-border-tertiary)">
+              <div style="width:6px;height:6px;border-radius:50%;background:${sColor};flex-shrink:0;margin-top:5px"></div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${ov.cliente}</div>
+                <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
+                  OV #${ov.numOV} · ${ov.division}${!asesor ? ' · '+ov.asesor : ''}
+                </div>
+                ${sLabel ? `<div style="font-size:11px;color:${sColor};margin-top:2px;font-weight:500">${sLabel}</div>` : ''}
+              </div>
+              <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);flex-shrink:0">${dashFmt(ov.total)}</div>
+            </div>
+          `;
+        }).join('')}
       </div>
     </div>
   `;
@@ -1077,4 +1215,11 @@ window.dashFiltrarAsesores = dashFiltrarAsesores;
 window.dashDrillAsesor    = dashDrillAsesor;
 window.dashCambiarMes     = dashSelMes;
 window.dashInit           = dashInit;
+
+// Inject chevron CSS
+(function() {
+  const s = document.createElement('style');
+  s.textContent = '.dash-chevron.rotated { transform: rotate(180deg); } #dash-page-pipeline, #dash-page-g-pipeline { overflow-y: auto; }';
+  document.head.appendChild(s);
+})();
 window.dashNormPresup     = dashNormPresup;
