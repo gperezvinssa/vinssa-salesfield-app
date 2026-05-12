@@ -208,7 +208,10 @@ function dashParseFecha(val) {
     return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   }
   const s = String(val).trim();
-  // dd/MM/yyyy o d/M/yyyy
+  // dd-MM-yyyy (formato SAP con CONVERT 105)
+  const m0 = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (m0) return new Date(parseInt(m0[3]), parseInt(m0[2]) - 1, parseInt(m0[1]));
+  // dd/MM/yyyy (formato mexicano con diagonal)
   const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m1) return new Date(parseInt(m1[3]), parseInt(m1[2]) - 1, parseInt(m1[1]));
   // yyyy-MM-dd
