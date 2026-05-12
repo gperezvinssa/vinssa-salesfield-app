@@ -9,7 +9,7 @@ const DASHBOARD_CONFIG = {
   siteId: 'versatilidadsaltillo.sharepoint.com,/sites/VINSSAAutomation',
   archivos: {
     roles:       'Lista Roles Dashboard.xlsx',
-    ventas:      'Ventas Asesor.xlsx',
+    ventas:      'Ventas Asesor v2.xlsx',
     ovs:         'OVs asesor.xlsx',
     presupuesto: 'Presupuesto Ventas.xlsx'
   },
