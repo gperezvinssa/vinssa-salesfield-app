@@ -73,17 +73,20 @@ async function dashGetToken() {
 
 // ── Buscar archivo en SharePoint y obtener su driveItem ─────────────────────
 async function dashGetFileId(token, nombre) {
-  const url = `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent('versatilidadsaltillo.sharepoint.com:/sites/VINSSAAutomation:')}/drives`;
-  const drivesRes = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  const drives = await drivesRes.json();
-  const driveId = drives.value[0].id;
-  DASH_STATE.driveId = driveId;
-
-  const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root/children`;
-  const itemsRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+  // Usar driveId cacheado si ya lo tenemos
+  if (!DASH_STATE.driveId) {
+    const url = 'https://graph.microsoft.com/v1.0/sites/versatilidadsaltillo.sharepoint.com:/sites/VINSSAAutomation:/drives';
+    const drivesRes = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    const drives = await drivesRes.json();
+    if (!drives.value || !drives.value.length) throw new Error('No se encontró el drive de SharePoint');
+    DASH_STATE.driveId = drives.value[0].id;
+  }
+  const driveId = DASH_STATE.driveId;
+  const searchUrl = 'https://graph.microsoft.com/v1.0/drives/' + driveId + '/root/children';
+  const itemsRes = await fetch(searchUrl, { headers: { Authorization: 'Bearer ' + token } });
   const items = await itemsRes.json();
-  const file = items.value.find(f => f.name === nombre);
-  if (!file) throw new Error(`No se encontró el archivo: ${nombre}`);
+  const file = (items.value || []).find(f => f.name === nombre);
+  if (!file) throw new Error('No se encontró el archivo: ' + nombre);
   return { driveId, fileId: file.id };
 }
 
