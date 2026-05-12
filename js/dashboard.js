@@ -481,9 +481,11 @@ function dashClientesEnRiesgo(asesor, diasUmbral = 60) {
 
 // ── Formatear moneda ─────────────────────────────────────────────────────────
 function dashFmt(num) {
-  if (num >= 1000000) return '$' + (num/1000000).toFixed(1) + 'M';
-  if (num >= 1000)    return '$' + Math.round(num/1000) + 'K';
-  return '$' + Math.round(num).toLocaleString('es-MX');
+  const abs = Math.abs(num);
+  const sign = num < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + '$' + (abs/1000000).toFixed(1) + 'M';
+  if (abs >= 1000)    return sign + '$' + (abs/1000).toFixed(1) + 'K';
+  return sign + '$' + Math.round(abs).toLocaleString('es-MX');
 }
 
 function diasEnMes(mes, anio) {
