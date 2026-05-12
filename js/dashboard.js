@@ -554,9 +554,17 @@ function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
   const col = dashColor(pctEmpresa);
   const enRiesgo = dashClientesEnRiesgo(null, 60);
 
+  // Resumen anual empresa
+  const histEmpresa = dashHistoricoAnualEmpresa(asesores, anio);
+  const pctAnualEmpresa = histEmpresa.metaAnual > 0 ? Math.round(histEmpresa.acumulado / histEmpresa.metaAnual * 100) : 0;
+  const vsAnteriorEmpresa = histEmpresa.acumuladoAnterior > 0
+    ? Math.round((histEmpresa.acumulado - histEmpresa.acumuladoAnterior) / histEmpresa.acumuladoAnterior * 100)
+    : 0;
+
   container.innerHTML = `
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('g-resumen',this)">Resumen</button>
+      <button class="dash-tab" onclick="dashTabSwitch('g-pipeline',this)">Pipeline</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-asesores',this)">Asesores</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-riesgo',this)">En riesgo</button>
     </div>
@@ -582,6 +590,44 @@ function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
         <div class="dash-mc"><div class="dash-mc-v">${equipo.filter(a=>a.pct>=65).length}/${equipo.length}</div><div class="dash-mc-l">Asesores en meta</div></div>
         <div class="dash-mc"><div class="dash-mc-v">${enRiesgo.length}</div><div class="dash-mc-l">Clientes en riesgo</div><div class="dash-mc-d" style="color:#A32D2D">+60 días sin compra</div></div>
       </div>
+      <div class="dash-annual">
+        <div class="dash-annual-title">Resumen ${anio} · Empresa</div>
+        <div class="dash-annual-row">
+          <div class="dash-ar-lbl">Acumulado Ene–${DASHBOARD_CONFIG.meses[mes-1]}</div>
+          <div style="text-align:right">
+            <div class="dash-ar-val">${dashFmt(histEmpresa.acumulado)}</div>
+            <div class="dash-ar-sub ${vsAnteriorEmpresa>=0?'dash-up':'dash-dn'}">${vsAnteriorEmpresa>=0?'+':''}${vsAnteriorEmpresa}% vs ${anio-1}</div>
+          </div>
+        </div>
+        <div class="dash-annual-row">
+          <div class="dash-ar-lbl">Meta anual</div>
+          <div style="text-align:right">
+            <div class="dash-ar-val">${dashFmt(histEmpresa.metaAnual)}</div>
+            <div class="dash-ar-sub dash-nu">${pctAnualEmpresa}% alcanzado</div>
+          </div>
+        </div>
+        ${histEmpresa.mejorMes && histEmpresa.mejorMes.venta > 0 ? `
+        <div class="dash-annual-row">
+          <div class="dash-ar-lbl">Mejor mes · ${histEmpresa.mejorMes.label}</div>
+          <div style="text-align:right">
+            <div class="dash-ar-val">${dashFmt(histEmpresa.mejorMes.venta)}</div>
+            <div class="dash-ar-sub" style="color:#BA7517">${histEmpresa.mejorMes.pct >= 100 ? '🏆 ' : ''}${histEmpresa.mejorMes.pct}% de meta</div>
+          </div>
+        </div>` : ''}
+        <div class="dash-annual-row">
+          <div class="dash-ar-lbl">Proyección anual</div>
+          <div style="text-align:right">
+            <div class="dash-ar-val">${dashFmt(histEmpresa.proyeccion)}</div>
+            <div class="dash-ar-sub ${histEmpresa.proyeccion >= histEmpresa.metaAnual ? 'dash-up' : 'dash-dn'}">${histEmpresa.metaAnual > 0 ? Math.round(histEmpresa.proyeccion/histEmpresa.metaAnual*100)+'% vs meta' : ''}</div>
+          </div>
+        </div>
+        <canvas id="dash-chart-gerente" style="margin-top:12px;width:100%;height:120px;max-height:120px" role="img" aria-label="Histórico mensual empresa"></canvas>
+      </div>
+      <div style="height:16px"></div>
+    </div>
+
+    <div id="dash-page-g-pipeline" class="dash-page">
+      ${dashPipelineHtml(null)}
     </div>
 
     <div id="dash-page-g-asesores" class="dash-page">
@@ -593,6 +639,7 @@ function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
       <div id="dash-asesores-lista">
         ${equipo.map(a => dashAsesorCardHtml(a, true)).join('')}
       </div>
+      <div style="height:16px"></div>
     </div>
 
     <div id="dash-page-g-riesgo" class="dash-page">
@@ -606,7 +653,53 @@ function dashRenderGerente(container, mes, anio, isCurrent, mesLabel) {
       const el = document.getElementById('dash-fill-' + dashSlug(a.nombre));
       if (el) setTimeout(() => el.style.width = Math.min(a.pct, 100) + '%', 150);
     });
+    // Gráfica histórica empresa
+    const canvas = document.getElementById('dash-chart-gerente');
+    if (canvas && window.Chart) {
+      new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: histEmpresa.meses.map(m => m.label),
+          datasets: [
+            { label: 'Venta', data: histEmpresa.meses.map(m => Math.round(m.venta)), backgroundColor: '#185FA5', borderRadius: 3 },
+            { label: 'Meta',  data: histEmpresa.meses.map(m => Math.round(m.meta)),  backgroundColor: '#D3D1C7', borderRadius: 3 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#888780' } },
+            y: { display: false }
+          }
+        }
+      });
+    }
   }, 100);
+}
+
+// ── Histórico anual consolidado empresa ──────────────────────────────────────
+function dashHistoricoAnualEmpresa(asesores, anio) {
+  const meses = [];
+  for (let m = 1; m <= 12; m++) {
+    let venta = 0, meta = 0, ventaAnterior = 0;
+    asesores.forEach(a => {
+      const met = dashCalcMetricas(a, m, anio);
+      const metAnt = dashCalcMetricas(a, m, anio - 1);
+      venta += met.totalVenta;
+      meta  += met.totalMeta;
+      ventaAnterior += metAnt.totalVenta;
+    });
+    const pct = meta > 0 ? Math.round(venta / meta * 100) : 0;
+    meses.push({ mes: m, label: DASHBOARD_CONFIG.meses[m-1], venta, meta, ventaAnterior, pct });
+  }
+  const acumulado = meses.reduce((s, m) => s + m.venta, 0);
+  const acumuladoAnterior = meses.reduce((s, m) => s + m.ventaAnterior, 0);
+  const mejorMes = meses.reduce((best, m) => m.venta > best.venta ? m : best, meses[0]);
+  const metaAnual = meses.reduce((s, m) => s + m.meta, 0);
+  const mesesConDatos = meses.filter(m => m.venta > 0);
+  const proyeccion = mesesConDatos.length > 0 ? (acumulado / mesesConDatos.length) * 12 : 0;
+  return { meses, acumulado, acumuladoAnterior, mejorMes, metaAnual, proyeccion };
 }
 
 // ── Componentes HTML ─────────────────────────────────────────────────────────
