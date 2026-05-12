@@ -258,12 +258,16 @@ function dashCalcMetricas(asesor, mes, anio, divisionesVisibles) {
     if (!v.Fecha) return false;
     const fecha = dashParseFecha(v.Fecha);
     if (!fecha || isNaN(fecha)) return false;
-    const vMes = fecha.getMonth() + 1;
-    const vAnio = fecha.getFullYear();
+    const vMes   = fecha.getMonth() + 1;
+    const vAnio  = fecha.getFullYear();
     const vAsesor = dashNormNombre(v.Asesor);
     if (vMes !== mes || vAnio !== anio || vAsesor !== asesorNorm) return false;
-    // Filtrar por división si aplica
+    // Filtrar por división si aplica.
+    // IMPORTANT: always include negative rows (credit notes) — they cancel sales
+    // regardless of the GrupoArticulo they were categorized under in SAP.
     if (divisionesVisibles) {
+      const total = dashGetTotal(v);
+      if (total < 0) return true; // credit note — always include for correct netting
       const div = DASHBOARD_CONFIG.mapaGrupos[String(v.GrupoArticulo||'').trim()];
       return divisionesVisibles.includes(div);
     }
@@ -281,7 +285,8 @@ function dashCalcMetricas(asesor, mes, anio, divisionesVisibles) {
 
   const totalVenta = ventasFiltradas.reduce((s, v) => s + dashGetTotal(v), 0);
   // totalVenta includes credit notes (negative) — this is correct net sales
-  const numOVs = new Set(ventasFiltradas.map(v => v.NumOV)).size;
+  // Count unique positive OV/invoice numbers (exclude credit notes which are negative)
+  const numOVs = new Set(ventasFiltradas.filter(v => dashGetTotal(v) > 0).map(v => v.NumFactura || v.NumOV)).size;
 
   // Presupuesto del asesor para ese mes
   // Buscar presupuesto: el nombre del asesor viene del presupuesto (puede tener alias)
@@ -297,10 +302,8 @@ function dashCalcMetricas(asesor, mes, anio, divisionesVisibles) {
 
   // Meta total del asesor (suma de todas sus divisiones ese mes)
   const totalMeta = presupFiltrado.reduce((s, p) => {
-    const div = String(p.Division || '').trim();
-    // Si tiene columna División, sumar solo una vez por división
-    // Si no tiene División, sumar la columna Meta directamente
-    return s + parseFloat(p.Meta || 0);
+    const m = parseFloat(p.Meta);
+    return s + (isNaN(m) ? 0 : m);
   }, 0);
 
   // Meta por división
@@ -308,7 +311,8 @@ function dashCalcMetricas(asesor, mes, anio, divisionesVisibles) {
   presupFiltrado.forEach(p => {
     const div = String(p.Division || p.División || '').trim();
     if (div) {
-      metaPorDivision[div] = (metaPorDivision[div] || 0) + parseFloat(p.Meta || 0);
+      const m = parseFloat(p.Meta);
+      metaPorDivision[div] = (metaPorDivision[div] || 0) + (isNaN(m) ? 0 : m);
     }
   });
 
@@ -354,23 +358,45 @@ function dashHistoricoAnual(asesor, anio, divisionesVisibles) {
 
 // ── Obtener lista única de asesores con presupuesto (nombres SAP normalizados) ─
 function dashGetAsesores() {
-  // Para División = Todos (Director), incluir todos los asesores del presupuesto
-  // Para otras divisiones, solo los asesores con presupuesto en esa división
+  // Returns asesores to show in lider/gerente views.
+  // Source of truth: presupuesto (has names + divisions).
+  // For divisions not in presupuesto (e.g. Suministros), fall back to ventas.
   const divs = dashGetDivisionesVisibles(); // null = Todos
+
   const seen = new Set();
   const result = [];
 
-  DASH_STATE.presupuesto.forEach(p => {
-    const nombre = String(p.Asesor || '').trim();
-    if (!nombre || seen.has(nombre)) return;
-    // Si hay filtro de divisiones, solo incluir asesores con presupuesto en esa división
-    if (divs) {
+  if (!divs) {
+    // Dir·Todos: all asesores from presupuesto
+    DASH_STATE.presupuesto.forEach(p => {
+      const nombre = String(p.Asesor || '').trim();
+      if (nombre && !seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
+    });
+  } else {
+    // Check if any presupuesto rows exist for these divisions
+    const presupDivs = DASH_STATE.presupuesto.filter(p => {
       const pDiv = String(p.Division || '').trim();
-      if (!divs.includes(pDiv)) return;
+      return divs.includes(pDiv);
+    });
+
+    if (presupDivs.length > 0) {
+      // Use presupuesto — filter by division
+      presupDivs.forEach(p => {
+        const nombre = String(p.Asesor || '').trim();
+        if (nombre && !seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
+      });
+    } else {
+      // No presupuesto for this division — derive asesores from ventas
+      DASH_STATE.ventas.forEach(v => {
+        const grupo = String(v.GrupoArticulo || '').trim();
+        const div   = DASHBOARD_CONFIG.mapaGrupos[grupo];
+        if (!divs.includes(div)) return;
+        const nombre = String(v.Asesor || '').trim();
+        if (nombre && !seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
+      });
     }
-    seen.add(nombre);
-    result.push(nombre);
-  });
+  }
+
   return result;
 }
 
@@ -672,8 +698,26 @@ function _pipelineHtml(asesorNorm, divisionesVisibles) {
   const opps = DASH_STATE.oportunidades.filter(o => {
     if (asesorNorm && dashNormNombre(o.Asesor) !== asesorNorm) return false;
     if (divisionesVisibles) {
-      const linea = String(o.Linea || '').toLowerCase();
-      return divisionesVisibles.some(d => linea.includes(d.toLowerCase()));
+      const linea = String(o.Linea || '').trim();
+      // Try direct division match first
+      const divDirecta = DASHBOARD_CONFIG.mapaGrupos[linea];
+      if (divDirecta) return divisionesVisibles.includes(divDirecta);
+      // Try case-insensitive substring match against division names
+      const lineaLow = linea.toLowerCase();
+      const matched = divisionesVisibles.some(d => lineaLow.includes(d.toLowerCase()));
+      if (matched) return true;
+      // Also check marca field
+      const marca = String(o.Marca || '').toLowerCase();
+      const marcaKeywords = {
+        'Trazabilidad': ['telesis','pinstamp','markem','imaje','datalogic'],
+        'Visión': ['cognex','keyence','sick','banner'],
+        'Robótica': ['nabtesco','ur','mir','easyrobotics','abb','fanuc'],
+        'Suministros': ['loctite','bonderite','henkel','ansell','3m']
+      };
+      return divisionesVisibles.some(d => {
+        const kws = marcaKeywords[d] || [];
+        return kws.some(k => marca.includes(k));
+      });
     }
     return true;
   });
