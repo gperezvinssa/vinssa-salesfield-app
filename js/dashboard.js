@@ -44,6 +44,45 @@ const DASHBOARD_CONFIG = {
   },
   // Divisiones visibles por rol gerente (filtra pipeline)
   divisionesTrazabilidad: ['Trazabilidad', 'Visión', 'Robótica'],
+  // Mapeo de valores del campo Linea en Oportunidades → División Dashboard
+  // Cubre variantes de capitalización y nombres alternativos
+  mapaLineas: {
+    // Trazabilidad
+    'identificacion': 'Trazabilidad', 'identificación': 'Trazabilidad',
+    'telesis': 'Trazabilidad', 'marcaje': 'Trazabilidad', 'brady': 'Trazabilidad',
+    'herramientas de ensamble': 'Trazabilidad', 'herramienta de ensamble': 'Trazabilidad',
+    'atlas copco': 'Trazabilidad',
+    // Visión
+    'vision': 'Visión', 'visión': 'Visión', 'cognex': 'Visión',
+    // Robótica
+    'robotica': 'Robótica', 'robótica': 'Robótica',
+    'robotica movil': 'Robótica', 'robótica móvil': 'Robótica',
+    'automatizacion': 'Robótica', 'automatización': 'Robótica',
+    'mir': 'Robótica', 'nabtesco': 'Robótica', 'ur': 'Robótica',
+    // Suministros
+    'quimicos': 'Suministros', 'químicos': 'Suministros',
+    'abrasivos': 'Suministros', 'soldadura y corte': 'Suministros',
+    'soldadura & corte': 'Suministros', 'soldadura': 'Suministros',
+    'seguridad': 'Suministros', 'otros suministros': 'Suministros',
+    'grasas': 'Suministros', 'equipos de dosificacion': 'Suministros',
+    'epp': 'Suministros',
+    // Servicios
+    'servicio taller': 'Servicios', 'servicio en campo': 'Servicios',
+    'servicios': 'Servicios'
+  },
+  // Asesores dedicados de Suministros — activos en 2026 (80%+ ventas en grupos Suministros)
+  // Actualizar cuando haya cambios de personal
+  asesoresSupply: new Set([
+    'ALEJANDRO RODRIGUEZ','ARTURO CASTILLO','DANIEL ABASCAL','EDER MORENO',
+    'EDUARDO ESPARZA','ENRIQUE CRUZ','FERNANDO MONTANA ALDAZ','FRANCISCO MARTINEZ',
+    'HORACIO MORALES','LINO TOVAR','MARIA VILLALOBOS','MAYELA HURTADO',
+    'NEFTALI CRUZ','SALVADOR GARCIA','SERGIO PEREZ FLORES','WENDY SANCHEZ',
+    'YATZMIN MONSIVAIS','YULIANA RODRIGUEZ'
+  ]),
+  // Asesores dedicados de Servicios — activos en 2026
+  asesoresServicio: new Set([
+    'ALEJANDRO TRUJILLO','ADOLFO PACHECO'
+  ]),
   // Alias: nombre normalizado en Presupuesto → nombre normalizado en SAP
   mapaAlias: {
     'JONATHAN ROCHE':     'JONATHAN ROCHE TOR',
@@ -358,43 +397,51 @@ function dashHistoricoAnual(asesor, anio, divisionesVisibles) {
 
 // ── Obtener lista única de asesores con presupuesto (nombres SAP normalizados) ─
 function dashGetAsesores() {
-  // Returns asesores to show in lider/gerente views.
-  // Source of truth: presupuesto (has names + divisions).
-  // For divisions not in presupuesto (e.g. Suministros), fall back to ventas.
+  // Returns the list of asesores to show in lider/gerente views.
+  // Trazabilidad asesores come from the presupuesto file (authoritative).
+  // Suministros asesores come from a hardcoded list derived from sales data.
+  // Dir·Todos shows the union of both.
   const divs = dashGetDivisionesVisibles(); // null = Todos
 
   const seen = new Set();
   const result = [];
 
-  if (!divs) {
-    // Dir·Todos: all asesores from presupuesto
+  const addFromPresupuesto = (filterDivs) => {
     DASH_STATE.presupuesto.forEach(p => {
       const nombre = String(p.Asesor || '').trim();
-      if (nombre && !seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
+      if (!nombre || seen.has(nombre)) return;
+      if (filterDivs) {
+        const pDiv = String(p.Division || '').trim();
+        if (!filterDivs.includes(pDiv)) return;
+      }
+      seen.add(nombre); result.push(nombre);
     });
-  } else {
-    // Check if any presupuesto rows exist for these divisions
-    const presupDivs = DASH_STATE.presupuesto.filter(p => {
-      const pDiv = String(p.Division || '').trim();
-      return divs.includes(pDiv);
-    });
+  };
 
-    if (presupDivs.length > 0) {
-      // Use presupuesto — filter by division
-      presupDivs.forEach(p => {
-        const nombre = String(p.Asesor || '').trim();
-        if (nombre && !seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
-      });
-    } else {
-      // No presupuesto for this division — derive asesores from ventas
-      DASH_STATE.ventas.forEach(v => {
-        const grupo = String(v.GrupoArticulo || '').trim();
-        const div   = DASHBOARD_CONFIG.mapaGrupos[grupo];
-        if (!divs.includes(div)) return;
-        const nombre = String(v.Asesor || '').trim();
-        if (nombre && !seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
-      });
-    }
+  const addFromSupplyList = () => {
+    DASHBOARD_CONFIG.asesoresSupply.forEach(nombre => {
+      if (!seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
+    });
+  };
+
+  const addFromServicioList = () => {
+    DASHBOARD_CONFIG.asesoresServicio.forEach(nombre => {
+      if (!seen.has(nombre)) { seen.add(nombre); result.push(nombre); }
+    });
+  };
+
+  if (!divs) {
+    // Dir·Todos: all divisions
+    addFromPresupuesto(null);   // Trazabilidad
+    addFromSupplyList();         // Suministros
+    addFromServicioList();       // Servicios
+  } else if (divs.includes('Suministros')) {
+    addFromSupplyList();
+  } else if (divs.includes('Servicios')) {
+    addFromServicioList();
+  } else {
+    // Trazabilidad (or Visión/Robótica subset)
+    addFromPresupuesto(divs);
   }
 
   return result;
@@ -698,26 +745,9 @@ function _pipelineHtml(asesorNorm, divisionesVisibles) {
   const opps = DASH_STATE.oportunidades.filter(o => {
     if (asesorNorm && dashNormNombre(o.Asesor) !== asesorNorm) return false;
     if (divisionesVisibles) {
-      const linea = String(o.Linea || '').trim();
-      // Try direct division match first
-      const divDirecta = DASHBOARD_CONFIG.mapaGrupos[linea];
-      if (divDirecta) return divisionesVisibles.includes(divDirecta);
-      // Try case-insensitive substring match against division names
-      const lineaLow = linea.toLowerCase();
-      const matched = divisionesVisibles.some(d => lineaLow.includes(d.toLowerCase()));
-      if (matched) return true;
-      // Also check marca field
-      const marca = String(o.Marca || '').toLowerCase();
-      const marcaKeywords = {
-        'Trazabilidad': ['telesis','pinstamp','markem','imaje','datalogic'],
-        'Visión': ['cognex','keyence','sick','banner'],
-        'Robótica': ['nabtesco','ur','mir','easyrobotics','abb','fanuc'],
-        'Suministros': ['loctite','bonderite','henkel','ansell','3m']
-      };
-      return divisionesVisibles.some(d => {
-        const kws = marcaKeywords[d] || [];
-        return kws.some(k => marca.includes(k));
-      });
+      const linea = String(o.Linea || '').trim().toLowerCase();
+      const div = DASHBOARD_CONFIG.mapaLineas[linea];
+      return div ? divisionesVisibles.includes(div) : false;
     }
     return true;
   });
