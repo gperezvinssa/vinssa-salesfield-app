@@ -980,8 +980,15 @@ function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) 
 // ── LIDER VIEW ───────────────────────────────────────────────────────────────
 function _renderLider(container, mes, anio, isCurrent, mesLabel, divs) {
   const asesores = dashGetAsesores();
-  const equipo   = asesores.map(a => ({ nombre: a, ...dashCalcMetricas(a, mes, anio, divs) }))
-                           .filter(a => a.totalMeta > 0 || a.totalVenta > 0);
+  const equipo   = asesores.map(a => {
+    const met = dashCalcMetricas(a, mes, anio, divs);
+    const hasAnualVenta = DASH_STATE.ventas.some(v =>
+      dashNormNombre(v.Asesor) === dashNormPresup(a) &&
+      dashParseFecha(v.Fecha)?.getFullYear() === anio &&
+      dashGetTotal(v) > 0
+    );
+    return { nombre: a, ...met, hasAnualVenta };
+  }).filter(a => a.totalMeta > 0 || a.totalVenta > 0 || a.hasAnualVenta);
   const totalEq  = equipo.reduce((s,a)=>s+a.totalVenta,0);
   const metaEq   = equipo.reduce((s,a)=>s+a.totalMeta,0);
   const pctEq    = metaEq>0 ? Math.round(totalEq/metaEq*100) : 0;
@@ -1037,8 +1044,16 @@ function _renderLider(container, mes, anio, isCurrent, mesLabel, divs) {
 // ── GERENTE / DIRECTOR VIEW ──────────────────────────────────────────────────
 function _renderGerente(container, mes, anio, isCurrent, mesLabel, divs) {
   const asesores = dashGetAsesores();
-  const equipo   = asesores.map(a => ({ nombre: a, ...dashCalcMetricas(a, mes, anio, divs) }))
-                           .filter(a => a.totalMeta > 0 || a.totalVenta > 0);
+  const equipo   = asesores.map(a => {
+    const met = dashCalcMetricas(a, mes, anio, divs);
+    // Also check if asesor has any venta this year to avoid showing completely inactive asesores
+    const hasAnualVenta = DASH_STATE.ventas.some(v =>
+      dashNormNombre(v.Asesor) === dashNormPresup(a) &&
+      dashParseFecha(v.Fecha)?.getFullYear() === anio &&
+      dashGetTotal(v) > 0
+    );
+    return { nombre: a, ...met, hasAnualVenta };
+  }).filter(a => a.totalMeta > 0 || a.totalVenta > 0 || a.hasAnualVenta);
   const totalEmp = equipo.reduce((s,a)=>s+a.totalVenta,0);
   const metaEmp  = equipo.reduce((s,a)=>s+a.totalMeta,0);
   const pctEmp   = metaEmp>0 ? Math.round(totalEmp/metaEmp*100) : 0;
