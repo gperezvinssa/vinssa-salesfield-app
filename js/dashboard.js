@@ -970,10 +970,12 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
       return acc;
     }, {})
   ).sort((a, b) => {
-    // Ordenar: vencidas primero, luego urgentes, luego por monto
+    // Ordenar: vencidas primero (más antiguas primero), luego urgentes (más próximas primero), luego ok por fecha
     const order = { vencida: 0, urgente: 1, ok: 2 };
     if (order[a.semaforo] !== order[b.semaforo]) return order[a.semaforo] - order[b.semaforo];
-    return b.total - a.total;
+    if (a.semaforo === 'vencida') return a.diasEntrega - b.diasEntrega; // más negativo = más vencida
+    if (a.semaforo === 'urgente') return a.diasEntrega - b.diasEntrega; // menos días = más urgente
+    return a.diasEntrega - b.diasEntrega;
   });
 
   const vencidasCount = ovsConsolidadas.filter(o => o.semaforo === 'vencida').length;
@@ -1003,7 +1005,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
           return `
             <div style="border-bottom:0.5px solid var(--color-border-tertiary)">
               <div style="display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer"
-                   onclick="document.getElementById('${isOpen}').classList.toggle('open');this.querySelector('.dash-chevron').classList.toggle('rotated')">
+                   onclick="const p=document.getElementById('${isOpen}');p.style.display=p.style.display==='none'?'block':'none';this.querySelector('.dash-chevron').classList.toggle('rotated')">
                 <div style="width:8px;height:8px;border-radius:50%;background:${cfg.color};flex-shrink:0"></div>
                 <div style="flex:1">
                   <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${etapa} · ${cfg.pct}%</div>
