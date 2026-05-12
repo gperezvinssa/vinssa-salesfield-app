@@ -1041,7 +1041,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
                     </div>
                     <div style="text-align:right;flex-shrink:0">
                       <div style="font-size:12px;font-weight:500;color:var(--color-text-primary)">${dashFmt(o.monto)}</div>
-                      <div style="font-size:10px;color:var(--color-text-secondary)">${o.Probabilidad || cfg.pct}%</div>
+                      <div style="font-size:10px;color:var(--color-text-secondary)">${o.Probabilidad || cfg.pct}% · ${o.Moneda || 'MXP'}</div>
                     </div>
                   </div>
                 `).join('')}
@@ -1054,7 +1054,7 @@ function dashPipelineHtml(asesor, divisionesVisibles) {
       <!-- OVS ABIERTAS -->
       <div class="pipe-wrap" style="padding-top:16px">
         <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:14px"></div>
-        <div class="pipe-hdr">
+        <div class="pipe-hdr" style="position:sticky;top:0;background:var(--color-background-primary);z-index:1;padding-bottom:8px">
           <div>
             <div class="pipe-total">${dashFmt(totalOVs)}</div>
             <div class="pipe-sub">OVs comprometidas · ${numOVs} abiertas</div>
@@ -1230,7 +1230,45 @@ window.dashInit           = dashInit;
 // Inject chevron CSS
 (function() {
   const s = document.createElement('style');
-  s.textContent = '.dash-chevron.rotated { transform: rotate(180deg); } #dash-page-pipeline, #dash-page-g-pipeline { overflow-y: auto; }';
+  s.textContent = `
+    .dash-chevron.rotated { transform: rotate(180deg); }
+    .dash-page { overflow: hidden; }
+    .dash-page.active { overflow: visible; }
+    .dash-annual { position: relative; z-index: 0; }
+  `;
   document.head.appendChild(s);
 })();
 window.dashNormPresup     = dashNormPresup;
+
+// ── MODO PRUEBA — selector de rol/división para validación ──────────────────
+// Eliminar antes de producción
+window.dashTestMode = function(rol, division) {
+  DASH_STATE.rol      = rol;
+  DASH_STATE.division = division;
+  console.log('Test mode:', rol, division);
+  dashRender();
+};
+
+// Inyectar botón de prueba en la UI
+(function() {
+  const btn = document.createElement('div');
+  btn.id = 'dash-test-bar';
+  btn.style.cssText = 'position:fixed;bottom:70px;left:0;right:0;background:#111827;color:white;font-size:10px;padding:6px 8px;z-index:999;display:flex;gap:4px;flex-wrap:wrap;max-width:390px;margin:0 auto';
+  btn.innerHTML = `
+    <span style="opacity:0.5;align-self:center">TEST:</span>
+    <button onclick="dashTestMode('gerente','Todos')" style="font-size:10px;padding:2px 6px;border:1px solid #444;background:#222;color:white;border-radius:4px;cursor:pointer">Dir·Todos</button>
+    <button onclick="dashTestMode('gerente','Trazabilidad')" style="font-size:10px;padding:2px 6px;border:1px solid #444;background:#222;color:white;border-radius:4px;cursor:pointer">Ger·Traz</button>
+    <button onclick="dashTestMode('gerente','Suministros')" style="font-size:10px;padding:2px 6px;border:1px solid #444;background:#222;color:white;border-radius:4px;cursor:pointer">Ger·Sum</button>
+    <button onclick="dashTestMode('lider','Trazabilidad')" style="font-size:10px;padding:2px 6px;border:1px solid #444;background:#222;color:white;border-radius:4px;cursor:pointer">Líd·Traz</button>
+    <button onclick="dashTestMode('asesor','Trazabilidad')" style="font-size:10px;padding:2px 6px;border:1px solid #444;background:#222;color:white;border-radius:4px;cursor:pointer">Ase·Traz</button>
+    <button onclick="dashTestMode('asesor','Suministros')" style="font-size:10px;padding:2px 6px;border:1px solid #444;background:#222;color:white;border-radius:4px;cursor:pointer">Ase·Sum</button>
+  `;
+  // Inject after dashboard loads
+  const observer = new MutationObserver(() => {
+    const dash = document.getElementById('screen-dashboard');
+    if (dash && !document.getElementById('dash-test-bar')) {
+      dash.appendChild(btn);
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
