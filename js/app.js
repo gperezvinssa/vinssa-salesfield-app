@@ -36,6 +36,10 @@ function renderHome() {
   if (!body) return;
   const nombre = CONFIG.usuario.nombre;
 
+  // Reset top-bar a default; la rama campo lo pinta verde si hay visita activa
+  const topBarReset = document.querySelector('.top-bar');
+  if (topBarReset) topBarReset.style.background = '';
+
   if (STATE.modo === null) {
     body.innerHTML = `
       <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:8px">Hola, <span style="font-weight:500">${nombre}</span></div>
@@ -51,43 +55,55 @@ function renderHome() {
         <div class="action-icon icon-gray">O</div>
         <div>
           <div class="action-title">Trabajo de seguimiento</div>
-          <div class="action-sub">Actualizar oportunidad desde oficina · sin GPS</div>
+          <div class="action-sub">Actualizar oportunidad desde oficina</div>
         </div>
       </button>`;
   } else if (STATE.modo === 'campo') {
-    body.innerHTML = `
-      <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span style="font-weight:500">${nombre}</span></div>
-      <button class="action-card" id="btn-checkin" onclick="mostrarModalCheckin()">
-        <div class="action-icon icon-blue">C</div>
-        <div>
-          <div class="action-title">¿Estás con un cliente?</div>
-          <div class="action-sub">Registra tu llegada primero</div>
-        </div>
-      </button>
-      <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
-      <div class="section-label">¿Qué vas a registrar?</div>
-      <div id="registro-btns">
-        <button class="action-card registro-btn" onclick="irA('screen-form','visita')" disabled>
-          <div class="action-icon icon-blue">V</div>
-          <div><div class="action-title">Nueva visita</div><div class="action-sub">Requiere check-in activo</div></div>
+    const enVisita = typeof GEO !== 'undefined' && GEO.checkin;
+    if (!enVisita) {
+      body.innerHTML = `
+        <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span style="font-weight:500">${nombre}</span></div>
+        <div class="info-banner">Iniciando visita...</div>`;
+    } else {
+      body.innerHTML = `
+        <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span style="font-weight:500">${nombre}</span></div>
+        <button class="action-card checkin-active" id="btn-checkin" onclick="checkout()">
+          <div class="action-icon icon-green" style="position:relative;background:#0F6E56;color:white">
+            <span style="width:8px;height:8px;background:#22c55e;border-radius:50%;position:absolute;top:4px;right:4px;border:1.5px solid white"></span>
+            C
+          </div>
+          <div>
+            <div class="action-title">Terminar visita</div>
+            <div class="action-sub">En: ${GEO.checkin.cliente}</div>
+          </div>
         </button>
-        <button class="action-card registro-btn" onclick="irA('screen-form','demo')" disabled>
-          <div class="action-icon icon-green">D</div>
-          <div><div class="action-title">Demo realizada</div><div class="action-sub">Requiere check-in activo</div></div>
-        </button>
-        <button class="action-card registro-btn" onclick="irA('screen-form','oportunidad')" disabled>
-          <div class="action-icon icon-gray">O</div>
-          <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Requiere check-in activo</div></div>
-        </button>
-      </div>`;
+        <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
+        <div class="section-label">¿Qué vas a registrar?</div>
+        <div id="registro-btns">
+          <button class="action-card registro-btn" onclick="irA('screen-form','visita')">
+            <div class="action-icon icon-blue">V</div>
+            <div><div class="action-title">Nueva visita</div><div class="action-sub">Registrar cliente visitado</div></div>
+          </button>
+          <button class="action-card registro-btn" onclick="irA('screen-form','demo')">
+            <div class="action-icon icon-green">D</div>
+            <div><div class="action-title">Demo realizada</div><div class="action-sub">Con o sin líder de línea</div></div>
+          </button>
+          <button class="action-card registro-btn" onclick="irA('screen-form','oportunidad')">
+            <div class="action-icon icon-gray">O</div>
+            <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Cambiar etapa o datos</div></div>
+          </button>
+        </div>`;
+    }
+    const topBar = document.querySelector('.top-bar');
+    if (topBar) topBar.style.background = enVisita ? '#0F6E56' : '';
   } else if (STATE.modo === 'gabinete') {
     body.innerHTML = `
       <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:12px">Hola, <span style="font-weight:500">${nombre}</span></div>
-      <div class="info-banner">Modo seguimiento · no se captura GPS</div>
+      <div class="info-banner">Modo seguimiento</div>
       <div class="section-label">¿Qué vas a registrar?</div>
       <button class="action-card" onclick="irA('screen-form','oportunidad')">
         <div class="action-icon icon-gray">O</div>
-        <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Desde oficina · sin GPS</div></div>
+        <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Desde oficina</div></div>
       </button>`;
   }
 
@@ -95,17 +111,38 @@ function renderHome() {
   if (chip) chip.style.display = STATE.modo ? '' : 'none';
 }
 
-function seleccionarModo(modo) {
-  STATE.modo = modo;
-  renderHome();
-  if (modo === 'campo' && typeof GEO !== 'undefined' && GEO.checkin) {
-    actualizarBotonCheckin(true, GEO.checkin.cliente);
+async function seleccionarModo(modo) {
+  if (modo === 'gabinete') {
+    STATE.modo = 'gabinete';
+    renderHome();
+    return;
+  }
+  if (modo === 'campo') {
+    // Si ya hay check-in activo (reload con visita viva), entrar directo a campo
+    if (typeof GEO !== 'undefined' && GEO.checkin) {
+      STATE.modo = 'campo';
+      renderHome();
+      return;
+    }
+    // Sin check-in: lanzar prompt directamente, sin pantalla intermedia
+    const nombre = prompt('¿Con qué cliente estás?');
+    if (!nombre || !nombre.trim()) return; // cancelado: queda en selector
+    STATE.modo = 'campo';
+    renderHome(); // estado de carga mientras GPS captura
+    const result = await checkin(nombre.trim());
+    if (!result) {
+      // GPS denegado o falló — regresar al selector
+      STATE.modo = null;
+      renderHome();
+      return;
+    }
+    renderHome(); // re-render con GEO.checkin presente → estado activo
   }
 }
 
 async function cambiarModo() {
   if (STATE.modo === 'campo' && typeof GEO !== 'undefined' && GEO.checkin) {
-    const ok = confirm(`Tienes una visita activa con ${GEO.checkin.cliente}. ¿Terminar visita y cambiar de modo?`);
+    const ok = confirm(`Tienes una visita activa con ${GEO.checkin.cliente}. ¿Terminar visita y regresar?`);
     if (!ok) return;
     await checkout();
   }
@@ -302,7 +339,7 @@ async function guardar() {
 
   const gpsInfo = registroConGPS.gps
     ? `📍 ${registroConGPS.gps.lat.toFixed(4)}, ${registroConGPS.gps.lng.toFixed(4)}`
-    : (STATE.modo === 'gabinete' ? '📝 Modo gabinete · sin GPS' : '📍 GPS no disponible');
+    : (STATE.modo === 'gabinete' ? '📝 Modo gabinete' : '📍 GPS no disponible');
 
   if (resultado) {
     const sapInfo = resultado.sapOppId
