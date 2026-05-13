@@ -173,7 +173,7 @@ Don't propose work already in motion or already decided against:
 
 - Vertrou SSL cert install (`vinssa.vertrou.cloud:50000`) — **blocker for direct SAP**, requested, awaiting response. Don't propose workarounds that require Premium connectors.
 - Power Automate flow to sync SharePoint List → SAP — **created, paused on SSL cert.** Don't recreate it.
-- Eliminate TEST bar — pending all roles validated with real users.
+- TEST bar (Dashboard) — **stays visible** until every role (Director, Gerente per división, Líder, Asesor) has been validated end-to-end with real users on real data. Proactively removing or hiding it is **out of scope** until that validation is complete — don't propose it, don't gate it behind a flag, don't "clean it up" as part of an unrelated change. When the time comes, removal will be its own explicit task.
 - Add Presupuesto for Suministros and Servicios — currently shows $0 because data missing, not a code bug.
 - Dir·Todos totals validation — under review.
 - Clientes en riesgo currently 0 — pending threshold/range review.
