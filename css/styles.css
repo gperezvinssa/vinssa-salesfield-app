@@ -263,3 +263,35 @@ textarea { min-height: 70px; resize: none; }
 
 .action-card.checkin-active .action-title { color: #0F6E56; }
 .action-card.checkin-active .action-sub { color: #3B6D11; }
+
+/* ── Chip "Cambiar modo" en top-bar ─────────────────────────────────────────── */
+.btn-cambiar-modo {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.9);
+  border: 0.5px solid rgba(255,255,255,0.2);
+  border-radius: 14px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-cambiar-modo:hover { background: rgba(255,255,255,0.18); }
+.btn-cambiar-modo:active { opacity: .8; }
+
+/* ── Cards del selector de modo (variante más prominente del action-card) ───── */
+.mode-card { padding: 18px 14px; }
+.mode-card .action-title { font-size: 15px; }
+.mode-card .action-sub { font-size: 12px; line-height: 1.4; margin-top: 2px; }
+
+/* ── Banner informativo (modo gabinete) ─────────────────────────────────────── */
+.info-banner {
+  background: #F5F4F0;
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  text-align: center;
+}

@@ -37,38 +37,12 @@
         <span class="top-bar-greeting">Vinssa Field</span>
         <span class="top-bar-date" id="fecha-hoy"></span>
       </div>
-      <div class="top-bar-user" id="user-initials" onclick="cerrarSesion()" title="Cerrar sesión" style="cursor:pointer">GP</div>
-    </header>
-    <main class="home-body">
-      <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span id="user-nombre" style="font-weight:500"></span></div>
-      <button class="action-card" id="btn-checkin" onclick="mostrarModalCheckin()">
-        <div class="action-icon icon-blue">C</div>
-        <div>
-          <div class="action-title">¿Estás con un cliente?</div>
-          <div class="action-sub">Registra tu llegada primero</div>
-        </div>
-      </button>
-      <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
-      <div class="section-label">¿Qué vas a registrar?</div>
-      <div id="registro-btns">
-        <button class="action-card registro-btn" onclick="irA('screen-form','visita')" disabled>
-          <div class="action-icon icon-blue">V</div>
-          <div><div class="action-title">Nueva visita</div><div class="action-sub">Requiere check-in activo</div></div>
-        </button>
-        <button class="action-card registro-btn" onclick="irA('screen-form','demo')" disabled>
-          <div class="action-icon icon-green">D</div>
-          <div><div class="action-title">Demo realizada</div><div class="action-sub">Requiere check-in activo</div></div>
-        </button>
-        <button class="action-card registro-btn" onclick="irA('screen-form','lead')" disabled>
-          <div class="action-icon icon-amber">L</div>
-          <div><div class="action-title">Lead / prospecto</div><div class="action-sub">Requiere check-in activo</div></div>
-        </button>
-        <button class="action-card registro-btn" onclick="irA('screen-form','oportunidad')" disabled>
-          <div class="action-icon icon-gray">O</div>
-          <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Requiere check-in activo</div></div>
-        </button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn-cambiar-modo" id="btn-cambiar-modo" onclick="cambiarModo()" style="display:none">⇄ Cambiar modo</button>
+        <div class="top-bar-user" id="user-initials" onclick="cerrarSesion()" title="Cerrar sesión" style="cursor:pointer">GP</div>
       </div>
-    </main>
+    </header>
+    <main class="home-body" id="home-body"></main>
     <!-- Bottom nav -->
     <nav class="bottom-nav">
       <button class="bnav-btn active" onclick="navSwitch('screen-home',this)">

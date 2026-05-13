@@ -4,6 +4,7 @@ function iniciales(n){return n.split(' ').slice(0,2).map(x=>x[0]).join('').toUpp
 function mostrarScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));const s=$(id);if(s){s.classList.add('active');window.scrollTo(0,0)}}
 
 const STATE={
+  modo:null,                           // null=selector | 'campo' | 'gabinete'
   tipo:null,division:'trazabilidad',marca:null,etapa:null,
   lideres:[],competidores:[],contactoNuevo:false,moneda:'MXP',
   clienteExiste:true,
@@ -29,10 +30,92 @@ function irA(screenId,tipo){
   renderForm();mostrarScreen(screenId);
 }
 
+// ── Render Home según STATE.modo ─────────────────────────────────────────────
+function renderHome() {
+  const body = $('home-body');
+  if (!body) return;
+  const nombre = CONFIG.usuario.nombre;
+
+  if (STATE.modo === null) {
+    body.innerHTML = `
+      <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:8px">Hola, <span style="font-weight:500">${nombre}</span></div>
+      <div class="section-label">¿Cómo vas a registrar?</div>
+      <button class="action-card mode-card" onclick="seleccionarModo('campo')">
+        <div class="action-icon icon-blue">V</div>
+        <div>
+          <div class="action-title">Estoy con un cliente</div>
+          <div class="action-sub">Visita o demo en persona · requiere check-in</div>
+        </div>
+      </button>
+      <button class="action-card mode-card" onclick="seleccionarModo('gabinete')">
+        <div class="action-icon icon-gray">O</div>
+        <div>
+          <div class="action-title">Trabajo de seguimiento</div>
+          <div class="action-sub">Actualizar oportunidad desde oficina · sin GPS</div>
+        </div>
+      </button>`;
+  } else if (STATE.modo === 'campo') {
+    body.innerHTML = `
+      <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span style="font-weight:500">${nombre}</span></div>
+      <button class="action-card" id="btn-checkin" onclick="mostrarModalCheckin()">
+        <div class="action-icon icon-blue">C</div>
+        <div>
+          <div class="action-title">¿Estás con un cliente?</div>
+          <div class="action-sub">Registra tu llegada primero</div>
+        </div>
+      </button>
+      <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
+      <div class="section-label">¿Qué vas a registrar?</div>
+      <div id="registro-btns">
+        <button class="action-card registro-btn" onclick="irA('screen-form','visita')" disabled>
+          <div class="action-icon icon-blue">V</div>
+          <div><div class="action-title">Nueva visita</div><div class="action-sub">Requiere check-in activo</div></div>
+        </button>
+        <button class="action-card registro-btn" onclick="irA('screen-form','demo')" disabled>
+          <div class="action-icon icon-green">D</div>
+          <div><div class="action-title">Demo realizada</div><div class="action-sub">Requiere check-in activo</div></div>
+        </button>
+        <button class="action-card registro-btn" onclick="irA('screen-form','oportunidad')" disabled>
+          <div class="action-icon icon-gray">O</div>
+          <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Requiere check-in activo</div></div>
+        </button>
+      </div>`;
+  } else if (STATE.modo === 'gabinete') {
+    body.innerHTML = `
+      <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:12px">Hola, <span style="font-weight:500">${nombre}</span></div>
+      <div class="info-banner">Modo seguimiento · no se captura GPS</div>
+      <div class="section-label">¿Qué vas a registrar?</div>
+      <button class="action-card" onclick="irA('screen-form','oportunidad')">
+        <div class="action-icon icon-gray">O</div>
+        <div><div class="action-title">Actualizar oportunidad</div><div class="action-sub">Desde oficina · sin GPS</div></div>
+      </button>`;
+  }
+
+  const chip = $('btn-cambiar-modo');
+  if (chip) chip.style.display = STATE.modo ? '' : 'none';
+}
+
+function seleccionarModo(modo) {
+  STATE.modo = modo;
+  renderHome();
+  if (modo === 'campo' && typeof GEO !== 'undefined' && GEO.checkin) {
+    actualizarBotonCheckin(true, GEO.checkin.cliente);
+  }
+}
+
+async function cambiarModo() {
+  if (STATE.modo === 'campo' && typeof GEO !== 'undefined' && GEO.checkin) {
+    const ok = confirm(`Tienes una visita activa con ${GEO.checkin.cliente}. ¿Terminar visita y cambiar de modo?`);
+    if (!ok) return;
+    await checkout();
+  }
+  STATE.modo = null;
+  renderHome();
+}
+
 const TIPO_CONFIG={
   visita:   {label:'Nueva visita',          color:'blue',  icon:'V'},
   demo:     {label:'Demo realizada',         color:'green', icon:'D'},
-  lead:     {label:'Lead / prospecto',       color:'amber', icon:'L'},
   oportunidad:{label:'Actualizar oportunidad',color:'purple',icon:'O'}
 };
 
@@ -184,7 +267,7 @@ async function guardar() {
   if(STATE.tipo!=='lead'&&!STATE.etapa){alert('Selecciona la etapa de la oportunidad');return}
 
   const registro={
-    tipo:STATE.tipo,fecha:new Date().toISOString(),
+    tipo:STATE.tipo,modo:STATE.modo||'campo',fecha:new Date().toISOString(),
     cliente:cliente,clienteContacto:STATE.campos['cliente-contacto'],
     clienteNuevo:!STATE.clienteExiste,division:STATE.division,
     marca:STATE.marca,producto:producto,etapa:STATE.etapa,
@@ -200,10 +283,15 @@ async function guardar() {
   };
 
   console.log('Registro a enviar a SAP:', registro);
-  
-// Capa 1 — capturar GPS al guardar
-  const registroConGPS = await capturarGPSAlGuardar(registro);
-  if (!registroConGPS) return;
+
+  // Modo gabinete: sin GPS, sin alerta de proximidad. Modo campo: captura normal.
+  let registroConGPS;
+  if (STATE.modo === 'gabinete') {
+    registroConGPS = registro;
+  } else {
+    registroConGPS = await capturarGPSAlGuardar(registro);
+    if (!registroConGPS) return; // usuario canceló por alerta de proximidad
+  }
 
   // Mostrar progreso
   const btnGuardar = document.querySelector('.save-btn');
@@ -214,7 +302,7 @@ async function guardar() {
 
   const gpsInfo = registroConGPS.gps
     ? `📍 ${registroConGPS.gps.lat.toFixed(4)}, ${registroConGPS.gps.lng.toFixed(4)}`
-    : '📍 GPS no disponible';
+    : (STATE.modo === 'gabinete' ? '📝 Modo gabinete · sin GPS' : '📍 GPS no disponible');
 
   if (resultado) {
     const sapInfo = resultado.sapOppId
@@ -252,9 +340,16 @@ window.setClienteExiste     = setClienteExiste;
 window.filtrarLideres       = filtrarLideres;
 window.guardar              = guardar;
 window.mostrarModalCheckin  = mostrarModalCheckin;
+window.renderHome           = renderHome;
+window.seleccionarModo      = seleccionarModo;
+window.cambiarModo          = cambiarModo;
 
 window.addEventListener('DOMContentLoaded',()=>{
   const f=$('fecha-hoy');if(f)f.textContent=fechaHoy();
   const u=$('user-initials');if(u)u.textContent=iniciales(CONFIG.usuario.nombre);
+  // Si hay check-in activo persistido, forzar modo Campo automáticamente
+  // (el chip "Cambiar modo" permite al asesor cerrar la visita y salir).
+  STATE.modo = localStorage.getItem('vinssa_checkin_activo') ? 'campo' : null;
+  renderHome();
   mostrarScreen('screen-home');
 });

@@ -184,11 +184,13 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
   const geoRegistros = JSON.parse(localStorage.getItem('vinssa_geo_registros') || '[]');
   const ultimoCheckin = geoRegistros.filter(r => r.tipo === 'checkin' && r.cliente === registro.cliente).pop();
   const ultimoCheckout = geoRegistros.filter(r => r.tipo === 'checkout' && r.cliente === registro.cliente).pop();
+  const esGabinete = registro.modo === 'gabinete';
 
   const fields = {
     Title: registro.cliente || '',
     Asesor: registro.asesor || '',
     Tipo: registro.tipo || '',
+    ModoRegistro: registro.modo || 'campo',
     Marca: registro.marca || '',
     Producto: registro.producto || '',
     Etapa: registro.etapa || '',
@@ -197,13 +199,13 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     Competitor: registro.competidores?.join(', ') || '',
     Lideres: registro.lideres?.join(', ') || '',
     Notas: registro.notas || '',
-    GPS_Lat: registro.gps?.lat || 0,
-    GPS_Lng: registro.gps?.lng || 0,
-    GPS_Precision: registro.gps?.precision || 0,
+    GPS_Lat: esGabinete ? null : (registro.gps?.lat || 0),
+    GPS_Lng: esGabinete ? null : (registro.gps?.lng || 0),
+    GPS_Precision: esGabinete ? null : (registro.gps?.precision || 0),
     GPS_Disponible: registro.gpsDisponible ? 'Si' : 'No',
-    Checkin_Hora: ultimoCheckin?.hora || '',
-    Checkout_Hora: ultimoCheckout?.horaSalida || '',
-    Duracion_Min: ultimoCheckout?.duracionMinutos || 0,
+    Checkin_Hora: esGabinete ? '' : (ultimoCheckin?.hora || ''),
+    Checkout_Hora: esGabinete ? '' : (ultimoCheckout?.horaSalida || ''),
+    Duracion_Min: esGabinete ? null : (ultimoCheckout?.duracionMinutos || 0),
     Contacto_Nuevo: registro.contactoNuevo ? 'Si' : 'No',
     Contacto_Nombre: registro.contactoNuevo?.nombre || '',
     Contacto_Puesto: registro.contactoNuevo?.puesto || '',
