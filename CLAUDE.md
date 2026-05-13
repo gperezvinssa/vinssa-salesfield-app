@@ -98,6 +98,9 @@ CORS blocks direct calls. The architecture uses Power Automate as the bridge. Do
 ### Etapa order is not enforced by SAP
 SAP B1 accepts any stage transition (including backwards) and stores each as a separate line. The intended UX is: warn when new `% < current %`, but **do not block**. Don't add validation that prevents the save.
 
+### Etapas vs Status de oportunidad
+En SAP B1, **etapa** (`StepLast` → tabla `OOST`) y **status de cierre** (`Status`: `O`=Abierta, otros valores=Cerrada Ganada/Perdida) son campos **separados**. El catálogo de etapas en `config.js` debe contener **solo etapas progresivas** (Contacto Inicial → Factura), **NO incluir 'Perdido' ni 'Ganado'** como etapa. Si el formulario necesita capturar cierre como ganada/perdida, debe ser un campo aparte del selector de etapa. Mantener esta separación previene corromper datos al sincronizar con SAP.
+
 ### Brand keywords (Field App lead detection — adjacent flow, but keep in mind)
 Brand keyword detection elsewhere in Gerardo's automation suite excludes "telesis" as a keyword because it appears in every Telesis lead email signature and creates false positives. If you ever consolidate brand catalogs here, preserve that distinction.
 
@@ -180,6 +183,7 @@ Don't propose work already in motion or already decided against:
 - Drill-down asesor from Gerente view — placeholder `alert()` in place, needs detail view.
 - Racha de actividad — hardcoded; will eventually pull from SharePoint List "Visitas Field App".
 - Replicate Field App to asesores piloto Rafael Moyeda and Néstor Carranza — pending.
+- Refactorizar el formulario de Actualizar Oportunidad para separar selección de etapa (campo `etapa`) de marcado de cierre Ganada/Perdida (campo `status`). Hoy SAP los maneja como campos distintos pero la app aún no refleja esa separación — el selector solo captura etapa progresiva. Prioridad media.
 
 ---
 

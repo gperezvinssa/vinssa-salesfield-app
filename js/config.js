@@ -37,10 +37,7 @@ const CONFIG = {
     { id: "pruebas_demo",        label: "Pruebas / Demostración",   pct: 60  },
     { id: "negociacion",         label: "Negociación",              pct: 80  },
     { id: "tramite_compras",     label: "Trámite con Compras",      pct: 90  },
-    { id: "factura",             label: "Factura",                  pct: 95  },
-    { id: "contacto_web",        label: "Contacto WEB/Teléfono",    pct: 10  },
-    { id: "registro_lead",       label: "Registro de Lead Expos",   pct: 10  },
-    { id: "perdido",             label: "Perdido",                  pct: 0   }
+    { id: "factura",             label: "Factura",                  pct: 95  }
   ],
 
   lideres: [
