@@ -310,10 +310,36 @@
 /* ── Filtros ────────────────────────────────────────────────────────────────── */
 .dash-filter-row {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 10px 16px;
-  overflow-x: auto;
 }
+.dash-filter-pills {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+}
+.dash-sort {
+  font-size: 11px;
+  padding: 5px 26px 5px 10px;
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: 6px;
+  background: var(--color-background-primary)
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'><path fill='%23888780' d='M0 0l4 5 4-5z'/></svg>")
+    no-repeat right 8px center;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 26px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+}
+.dash-sort:focus { outline: 1px solid #185FA5; outline-offset: 0; }
 .dash-fchip {
   font-size: 11px;
   padding: 5px 12px;

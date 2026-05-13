@@ -111,7 +111,8 @@ const DASH_STATE = {
   mesSel: new Date().getMonth() + 1,
   anioSel: new Date().getFullYear(),
   token: null,
-  driveId: null
+  driveId: null,
+  asesoresSort: 'mas_ventas'  // 'mas_ventas' | 'menos_ventas' | 'mejor_pct' | 'peor_pct'
 };
 
 // ── Obtener token Graph ──────────────────────────────────────────────────────
@@ -678,6 +679,7 @@ function _asesorCard(a, clickable) {
   const statusClass = a.pct>=65?'pill-grn':a.pct>=40?'pill-amb':'pill-red';
   return `
     <div class="dash-ac ${a.pct<40?'dash-ac-risk':a.pct<65?'dash-ac-warn':''}"
+      data-venta="${a.totalVenta}" data-pct="${a.pct}" data-haspresup="${a.totalMeta>0?1:0}"
       ${clickable?`onclick="dashDrillAsesor('${a.nombre}')"`:''} style="margin-bottom:8px">
       <div class="dash-ac-top">
         <div class="dash-acav" style="background:${col.bar}22;color:${col.pct}">${ini}</div>
@@ -702,16 +704,47 @@ function _asesorCard(a, clickable) {
     </div>`;
 }
 
+// ── Ordenar equipo por venta o % de presupuesto ───────────────────────────────
+// Para 'mejor_pct' y 'peor_pct': los asesores sin presupuesto (totalMeta=0) van
+// al final — no deben "ganar" Peor % sólo porque su pct se calcula como 0.
+function _ordenarEquipo(equipo, key) {
+  const arr = equipo.slice();
+  if (key === 'menos_ventas') {
+    arr.sort((a, b) => a.totalVenta - b.totalVenta);
+  } else if (key === 'mejor_pct' || key === 'peor_pct') {
+    arr.sort((a, b) => {
+      const aTiene = a.totalMeta > 0, bTiene = b.totalMeta > 0;
+      if (aTiene !== bTiene) return aTiene ? -1 : 1;
+      if (!aTiene) return 0;
+      return key === 'mejor_pct' ? b.pct - a.pct : a.pct - b.pct;
+    });
+  } else {
+    arr.sort((a, b) => b.totalVenta - a.totalVenta); // 'mas_ventas' default
+  }
+  return arr;
+}
+
 // ── SHARED: Asesores filter list ─────────────────────────────────────────────
 function _asesoresListaHtml(equipo, clickable) {
+  const sort = DASH_STATE.asesoresSort || 'mas_ventas';
+  const ordenado = _ordenarEquipo(equipo, sort);
   return `
     <div class="dash-filter-row">
-      <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this)">Todos</button>
-      <button class="dash-fchip" onclick="dashFiltrarAsesores('riesgo',this)">En riesgo</button>
-      <button class="dash-fchip" onclick="dashFiltrarAsesores('meta',this)">En meta</button>
+      <div class="dash-filter-pills">
+        <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this)">Todos</button>
+        <button class="dash-fchip" onclick="dashFiltrarAsesores('riesgo',this)">En riesgo</button>
+        <button class="dash-fchip" onclick="dashFiltrarAsesores('meta',this)">En meta</button>
+      </div>
+      <select class="dash-sort" aria-label="Ordenar por" onchange="dashOrdenarAsesores(this.value)">
+        <option value="" disabled>Ordenar por</option>
+        <option value="mas_ventas"   ${sort==='mas_ventas'  ?'selected':''}>Más ventas</option>
+        <option value="menos_ventas" ${sort==='menos_ventas'?'selected':''}>Menos ventas</option>
+        <option value="mejor_pct"    ${sort==='mejor_pct'   ?'selected':''}>Mejor % de presupuesto</option>
+        <option value="peor_pct"     ${sort==='peor_pct'    ?'selected':''}>Peor % de presupuesto</option>
+      </select>
     </div>
     <div id="dash-asesores-lista">
-      ${equipo.map(a => _asesorCard(a, clickable)).join('')}
+      ${ordenado.map(a => _asesorCard(a, clickable)).join('')}
     </div>
     <div style="height:16px"></div>`;
 }
@@ -1234,6 +1267,30 @@ function dashFiltrarAsesores(filtro, btn) {
   });
 }
 
+// Reordena los cards en el DOM SIN re-renderizar — preserva el filtro activo.
+function dashOrdenarAsesores(key) {
+  DASH_STATE.asesoresSort = key;
+  const lista = document.getElementById('dash-asesores-lista');
+  if (!lista) return;
+  const cards = Array.from(lista.querySelectorAll('.dash-ac'));
+  cards.sort((a, b) => {
+    const av = parseFloat(a.dataset.venta) || 0;
+    const bv = parseFloat(b.dataset.venta) || 0;
+    const ap = parseFloat(a.dataset.pct)   || 0;
+    const bp = parseFloat(b.dataset.pct)   || 0;
+    const aH = a.dataset.haspresup === '1';
+    const bH = b.dataset.haspresup === '1';
+    if (key === 'menos_ventas') return av - bv;
+    if (key === 'mejor_pct' || key === 'peor_pct') {
+      if (aH !== bH) return aH ? -1 : 1;
+      if (!aH) return 0;
+      return key === 'mejor_pct' ? bp - ap : ap - bp;
+    }
+    return bv - av; // mas_ventas
+  });
+  cards.forEach(c => lista.appendChild(c));
+}
+
 function dashDrillAsesor(nombre) {
   alert(`Vista detalle de ${nombre} — próximamente`);
 }
@@ -1275,6 +1332,7 @@ window.dashTabSwitch         = dashTabSwitch;
 window.dashTogglePeriodPanel = dashTogglePeriodPanel;
 window.dashSelMes            = dashSelMes;
 window.dashFiltrarAsesores   = dashFiltrarAsesores;
+window.dashOrdenarAsesores   = dashOrdenarAsesores;
 window.dashDrillAsesor       = dashDrillAsesor;
 window.dashCambiarMes        = dashSelMes;
 window.dashInit              = dashInit;
