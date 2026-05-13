@@ -183,7 +183,6 @@ Don't propose work already in motion or already decided against:
 - Drill-down asesor from Gerente view — placeholder `alert()` in place, needs detail view.
 - Racha de actividad — hardcoded; will eventually pull from SharePoint List "Visitas Field App".
 - Replicate Field App to asesores piloto Rafael Moyeda and Néstor Carranza — pending.
-- Refactorizar el formulario de Actualizar Oportunidad para separar selección de etapa (campo `etapa`) de marcado de cierre Ganada/Perdida (campo `status`). Hoy SAP los maneja como campos distintos pero la app aún no refleja esa separación — el selector solo captura etapa progresiva. Prioridad media.
 
 ---
 

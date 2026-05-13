@@ -61,6 +61,7 @@ body {
 .top-bar.blue   { background: var(--blue); }
 .top-bar.amber  { background: #92400e; }
 .top-bar.purple { background: var(--purple); }
+.top-bar.red    { background: #A32D2D; }
 
 /* Home */
 .home-body { padding: 14px; flex: 1; }
@@ -93,6 +94,7 @@ body {
 .icon-amber  { background: var(--amber-bg);  color: var(--amber); }
 .icon-gray   { background: #f1efe8;          color: #5f5e5a; }
 .icon-purple { background: var(--purple-bg); color: var(--purple); }
+.icon-red    { background: #FCEBEB;          color: #A32D2D; }
 
 .action-title { font-size: 14px; font-weight: 500; color: var(--text); }
 .action-sub   { font-size: 12px; color: var(--muted); margin-top: 1px; }
@@ -241,6 +243,7 @@ textarea { min-height: 70px; resize: none; }
 .save-btn.green  { background: var(--green); }
 .save-btn.amber  { background: #92400e; }
 .save-btn.purple { background: var(--purple); }
+.save-btn.red    { background: #A32D2D; }
 
 .back-btn {
   background: none; border: none; color: white;

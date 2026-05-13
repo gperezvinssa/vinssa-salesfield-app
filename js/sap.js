@@ -191,10 +191,14 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     Asesor: registro.asesor || '',
     Tipo: registro.tipo || '',
     ModoRegistro: registro.modo || 'campo',
+    ResultadoCierre: registro.resultadoCierre || '',
+    RazonPerdida: registro.razonPerdida || '',
+    OppNombre: registro.oppNombre || '',
     Marca: registro.marca || '',
     Producto: registro.producto || '',
     Etapa: registro.etapa || '',
     Monto: parseFloat(registro.monto) || 0,
+    MontoFinal: registro.montoFinal ? parseFloat(registro.montoFinal) : null,
     Moneda: registro.moneda || 'MXP',
     Competitor: registro.competidores?.join(', ') || '',
     Lideres: registro.lideres?.join(', ') || '',
@@ -219,6 +223,9 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
   // Agregar fecha de cierre solo si existe
   if (registro.cierre) {
     fields.Cierre = new Date(registro.cierre).toISOString();
+  }
+  if (registro.fechaCierreReal) {
+    fields.FechaCierreReal = new Date(registro.fechaCierreReal).toISOString();
   }
 
   try {
