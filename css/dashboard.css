@@ -311,16 +311,9 @@
 .dash-filter-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 16px;
-}
-.dash-filter-pills {
-  display: flex;
   gap: 6px;
-  overflow-x: auto;
-  flex: 1;
-  min-width: 0;
+  padding: 10px 16px;
+  flex-wrap: wrap;
 }
 .dash-sort {
   font-size: 11px;
@@ -338,6 +331,7 @@
   flex-shrink: 0;
   white-space: nowrap;
   font-family: var(--font-sans);
+  margin-left: auto;
 }
 .dash-sort:focus { outline: 1px solid #185FA5; outline-offset: 0; }
 .dash-fchip {

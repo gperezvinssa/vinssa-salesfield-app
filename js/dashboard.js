@@ -730,11 +730,9 @@ function _asesoresListaHtml(equipo, clickable) {
   const ordenado = _ordenarEquipo(equipo, sort);
   return `
     <div class="dash-filter-row">
-      <div class="dash-filter-pills">
-        <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this)">Todos</button>
-        <button class="dash-fchip" onclick="dashFiltrarAsesores('riesgo',this)">En riesgo</button>
-        <button class="dash-fchip" onclick="dashFiltrarAsesores('meta',this)">En meta</button>
-      </div>
+      <button class="dash-fchip active" onclick="dashFiltrarAsesores('todos',this)">Todos</button>
+      <button class="dash-fchip" onclick="dashFiltrarAsesores('riesgo',this)">En riesgo</button>
+      <button class="dash-fchip" onclick="dashFiltrarAsesores('meta',this)">En meta</button>
       <select class="dash-sort" aria-label="Ordenar por" onchange="dashOrdenarAsesores(this.value)">
         <option value="" disabled>Ordenar por</option>
         <option value="mas_ventas"   ${sort==='mas_ventas'  ?'selected':''}>Más ventas</option>
