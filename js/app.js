@@ -11,9 +11,11 @@ const STATE={
   lideres:[],competidores:[],contactoNuevo:false,moneda:'MXP',
   clienteExiste:true,
   campos:{},
-  // Piloto de Actualizar Oportunidad: dropdown de clientes y oportunidades.
+  // Piloto de Actualizar Oportunidad: combobox de clientes y oportunidades.
   asesorSAP:null,                      // se resuelve en auth.js desde EMAIL_A_ASESOR
   oportunidades:[],                    // poblado async tras login
+  opsLoading:true,                     // true hasta que termine la primera carga
+  clienteCommit:'',                    // cliente "settled" (post-commit del combobox)
   oportunidadSeleccionada:null         // objeto opp completo cuando el asesor elige una
 };
 
@@ -35,6 +37,7 @@ function irA(screenId,tipo){
   STATE.competidores=[];STATE.contactoNuevo=false;STATE.moneda='MXP';STATE.campos={};
   STATE.resultado=null;STATE.razonPerdida=null;
   STATE.oportunidadSeleccionada=null;
+  STATE.clienteCommit='';
   renderForm();mostrarScreen(screenId);
 }
 
@@ -58,46 +61,186 @@ function opsDelCliente(cliente){
   return STATE.oportunidades.filter(o=>normCliente(o.Cliente)===norm);
 }
 
-// El asesor eligió una oportunidad del dropdown → guardar y re-render.
-// Limpiar monto-final para que el auto-llenado tome el MontoEstimado de la nueva opp.
-function selOportunidad(numOpp){
-  guardarCampos();
-  STATE.oportunidadSeleccionada=STATE.oportunidades.find(o=>String(o.NumOportunidad)===String(numOpp))||null;
-  delete STATE.campos['monto-final'];
-  renderForm();
+// ── Combobox custom — vanilla autocomplete con lista flotante ───────────────
+// Por qué no <select>: en celular abre selector nativo del OS, no es buscable,
+// y los asesores no notan que es interactivo. Tampoco <input list=datalist>:
+// el oninput re-renderiza el form lo cual destruye el input y el focus.
+// Este módulo separa tipeo (filtrado DOM-local) de commit (re-render del form),
+// preservando focus durante la búsqueda.
+
+const CB_STATE = {};
+
+function _cbInput(boxId){ return document.getElementById(boxId+'-input'); }
+function _cbList(boxId){  return document.getElementById(boxId+'-list'); }
+function _cbEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _cbAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+
+// Inicializa estado del combobox. Llamada desde renderBloqueClienteYOpp.
+function cbInit(boxId, items, kind){
+  CB_STATE[boxId] = { items, filter:'', highlighted:-1, open:false, kind };
 }
 
-// El asesor cambió el cliente en el dropdown autocompletable.
-// Resetea la opp seleccionada (puede no aplicar al nuevo cliente).
-// Si el nuevo cliente tiene exactamente UNA opp, la pre-selecciona.
-// Limpia monto-final para que el auto-llenado lo reponga desde la nueva opp.
-function onClienteCambio(valor){
-  guardarCampos();
-  STATE.oportunidadSeleccionada=null;
-  const ops=opsDelCliente(valor);
-  if(ops.length===1) STATE.oportunidadSeleccionada=ops[0];
-  delete STATE.campos['monto-final'];
-  renderForm();
+function cbOpen(boxId){
+  const cb = CB_STATE[boxId]; if(!cb) return;
+  cb.open = true; cb.filter = ''; cb.highlighted = -1;
+  cbRenderList(boxId);
+  setTimeout(()=>{
+    const el = document.getElementById(boxId);
+    if(el) el.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  }, 50);
 }
 
-// Botón refresh inline en el form: vuelve a cargar Oportunidades.xlsx.
-async function refrescarOportunidades(){
-  const btn=$('btn-refresh-opps');
-  if(btn){ btn.disabled=true; btn.textContent='Actualizando...'; }
-  guardarCampos();
-  STATE.oportunidades=await cargarOportunidadesAsesor();
-  // Si el cliente actual ya no tiene una opp pre-seleccionada válida, limpia.
-  if(STATE.oportunidadSeleccionada){
-    const sigue=STATE.oportunidades.find(o=>String(o.NumOportunidad)===String(STATE.oportunidadSeleccionada.NumOportunidad));
-    STATE.oportunidadSeleccionada=sigue||null;
+function cbClose(boxId){
+  const cb = CB_STATE[boxId]; if(!cb) return;
+  cb.open = false;
+  const list = _cbList(boxId); if(list) list.hidden = true;
+}
+
+function cbFilter(boxId, value){
+  const cb = CB_STATE[boxId]; if(!cb) return;
+  cb.filter = value; cb.highlighted = -1; cb.open = true;
+  cbRenderList(boxId);
+}
+
+function cbRenderList(boxId){
+  const cb = CB_STATE[boxId]; const list = _cbList(boxId);
+  if(!cb || !list) return;
+  const f = normCliente(cb.filter);
+  const matches = f
+    ? cb.items.filter(i => normCliente((i.label||'')+' '+(i.subtext||'')).includes(f))
+    : cb.items;
+  cb._lastMatches = matches;
+  if(matches.length === 0){
+    const msg = cb.kind === 'cliente'
+      ? 'Sin coincidencias en tus clientes con oportunidades activas. Sigue escribiendo — al confirmar se tratará como cliente sin opp en SAP.'
+      : 'Sin coincidencias en este cliente.';
+    list.innerHTML = `<div class="cb-empty">${msg}</div>`;
+  } else {
+    list.innerHTML = matches.map((m,i)=>{
+      const hl = i === cb.highlighted ? ' cb-hl' : '';
+      const sub = m.subtext ? `<div class="cb-option-sub">${_cbEsc(m.subtext)}</div>` : '';
+      return `<div class="cb-option${hl}" data-v="${_cbAttr(m.value)}"
+                   onmousedown="event.preventDefault(); cbSelect('${boxId}', this.dataset.v)">
+        <div class="cb-option-label">${_cbEsc(m.label)}</div>${sub}
+      </div>`;
+    }).join('');
+  }
+  list.hidden = !cb.open;
+  list.scrollTop = 0;
+  // Scroll highlighted into view (keyboard nav)
+  const hlEl = list.querySelector('.cb-hl');
+  if(hlEl) hlEl.scrollIntoView({ block:'nearest' });
+}
+
+function cbSelect(boxId, value){
+  const cb = CB_STATE[boxId]; if(!cb) return;
+  const item = cb.items.find(i => String(i.value) === String(value));
+  if(!item) return;
+  const input = _cbInput(boxId);
+  if(input) input.value = item.label;
+  cbClose(boxId);
+  if(cb.kind === 'cliente') cbCommitCliente(item.value);
+  else cbCommitOpp(item.value);
+}
+
+function cbBlur(boxId){
+  // Delay corto para tolerar variaciones de orden de evento entre browsers.
+  // (mousedown.preventDefault() en options ya previene blur en el caso normal,
+  // pero algunos browsers móviles disparan blur antes del mousedown.)
+  setTimeout(()=>{
+    const cb = CB_STATE[boxId]; if(!cb || !cb.open) return;
+    cbClose(boxId);
+    const input = _cbInput(boxId);
+    const typed = input ? input.value.trim() : '';
+    if(!typed) return;
+    const exact = cb.items.find(i => normCliente(i.label) === normCliente(typed));
+    if(exact){
+      if(input) input.value = exact.label;
+      if(cb.kind === 'cliente') cbCommitCliente(exact.value);
+      else cbCommitOpp(exact.value);
+    } else if(cb.kind === 'cliente'){
+      // Sin match → commit como cliente sin opps en SAP (fallback de texto libre).
+      cbCommitCliente(typed);
+    } else {
+      // Opp sin match → revertir al label de la opp previamente seleccionada (o vaciar).
+      const sel = STATE.oportunidadSeleccionada;
+      if(input) input.value = sel
+        ? (sel.Descripcion + (sel.Marca ? ' · '+sel.Marca : '')).trim()
+        : '';
+    }
+  }, 150);
+}
+
+function cbKeydown(event, boxId){
+  const cb = CB_STATE[boxId]; if(!cb) return;
+  if(event.key === 'ArrowDown'){
+    event.preventDefault();
+    if(!cb.open){ cbOpen(boxId); return; }
+    const m = cb._lastMatches || cb.items;
+    cb.highlighted = Math.min(cb.highlighted + 1, m.length - 1);
+    cbRenderList(boxId);
+  } else if(event.key === 'ArrowUp'){
+    event.preventDefault();
+    if(!cb.open) return;
+    cb.highlighted = Math.max(cb.highlighted - 1, 0);
+    cbRenderList(boxId);
+  } else if(event.key === 'Enter'){
+    if(!cb.open) return;
+    event.preventDefault();
+    const m = cb._lastMatches || cb.items;
+    if(cb.highlighted >= 0 && m[cb.highlighted]) cbSelect(boxId, m[cb.highlighted].value);
+    else if(m.length === 1) cbSelect(boxId, m[0].value);
+    else { const inp = _cbInput(boxId); if(inp) inp.blur(); }
+  } else if(event.key === 'Escape'){
+    cbClose(boxId);
+  }
+}
+
+// Commit del combobox de cliente. Idempotente: si el cliente no cambia,
+// no resetea la opp seleccionada (evita perder selección al hacer blur sin cambio).
+function cbCommitCliente(value){
+  if(STATE.clienteCommit !== value){
+    STATE.clienteCommit = value;
+    STATE.oportunidadSeleccionada = null;
+    const ops = opsDelCliente(value);
+    if(ops.length === 1) STATE.oportunidadSeleccionada = ops[0];
+    delete STATE.campos['monto-final'];
   }
   renderForm();
 }
 
+// Commit del combobox de oportunidad. Idempotente como cbCommitCliente.
+function cbCommitOpp(numOpp){
+  const sel = STATE.oportunidades.find(o => String(o.NumOportunidad) === String(numOpp)) || null;
+  const cambia = !STATE.oportunidadSeleccionada
+    || String(STATE.oportunidadSeleccionada.NumOportunidad) !== String(numOpp);
+  if(cambia){
+    STATE.oportunidadSeleccionada = sel;
+    delete STATE.campos['monto-final'];
+  }
+  renderForm();
+}
+
+// Botón refresh inline en el form: recarga Oportunidades.xlsx.
+async function refrescarOportunidades(){
+  STATE.opsLoading = true;
+  const btn = $('btn-refresh-opps');
+  if(btn){ btn.disabled = true; btn.textContent = '...'; }
+  STATE.oportunidades = await cargarOportunidadesAsesor();
+  // Si la opp pre-seleccionada ya no existe en la nueva carga, limpiar.
+  if(STATE.oportunidadSeleccionada){
+    const sigue = STATE.oportunidades.find(o =>
+      String(o.NumOportunidad) === String(STATE.oportunidadSeleccionada.NumOportunidad));
+    STATE.oportunidadSeleccionada = sigue || null;
+  }
+  STATE.opsLoading = false;
+  renderForm();
+}
+
 // Hook llamado por auth.js cuando termina la carga async inicial.
-// Si el form de Actualizar Oportunidad ya está abierto, re-render para poblar dropdown.
 function onOportunidadesCargadas(){
-  if(STATE.tipo==='oportunidad' && STATE.resultado!==null){
+  STATE.opsLoading = false;
+  if(STATE.tipo === 'oportunidad' && STATE.resultado !== null){
     renderForm();
   }
 }
@@ -250,54 +393,102 @@ function renderMensajePiloto(){
   </div>`;
 }
 
-// Bloque compartido: card Cliente (input + datalist autocompletable) +
-// card Oportunidad (dropdown con opps del cliente, o fallback de texto libre).
-// Devuelve { html, esFallback, opSel } para que cada caso decida qué hacer después.
+// Bloque compartido: card Cliente (combobox custom autocomplete) + card Oportunidad
+// (combobox cuando el cliente tiene opps, o fallback de texto libre).
+// Devuelve { html, esFallback, opSel } para que cada caso del form decida qué hacer.
 function renderBloqueClienteYOpp(){
-  const clientes=clientesUnicos();
-  const clienteActual=STATE.campos['cliente-nombre']||'';
-  const ops=opsDelCliente(clienteActual);
-  const opSel=STATE.oportunidadSeleccionada;
-  const aunCargando=STATE.oportunidades.length===0;
-  const esFallback=clienteActual.trim().length>0 && ops.length===0;
+  const clienteCommit = STATE.clienteCommit || '';
+  const ops = opsDelCliente(clienteCommit);
+  const opSel = STATE.oportunidadSeleccionada;
+  const esFallback = clienteCommit.trim().length > 0 && ops.length === 0;
+  const refreshBtn = `<button type="button" id="btn-refresh-opps" class="btn-refresh" onclick="refrescarOportunidades()" title="Recargar oportunidades de SAP">🔄</button>`;
 
-  const datalistOpts=clientes.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
-  const refreshBtn=`<button type="button" id="btn-refresh-opps" class="btn-refresh" onclick="refrescarOportunidades()" title="Recargar oportunidades de SAP">🔄</button>`;
+  // Mientras se cargan oportunidades de SAP, solo el hint. Evita que el combobox
+  // aparezca con 0 items y luego re-render destruya el input cuando termina la carga.
+  if(STATE.opsLoading){
+    return {
+      html: `<div class="card">
+        <div class="card-title-row">
+          <div class="card-title">Cliente <span class="req">*</span></div>
+          ${refreshBtn}
+        </div>
+        <div class="hint-piloto">Cargando tus oportunidades de SAP...</div>
+      </div>`,
+      esFallback: false,
+      opSel: null
+    };
+  }
 
-  const clienteCard=`<div class="card">
+  // Combobox de cliente
+  const clienteItems = clientesUnicos().map(c => ({ value: c, label: c }));
+  cbInit('cb-cliente', clienteItems, 'cliente');
+  const clienteListHTML = clienteItems.length > 0
+    ? clienteItems.map(m => `<div class="cb-option" data-v="${_cbAttr(m.value)}"
+        onmousedown="event.preventDefault(); cbSelect('cb-cliente', this.dataset.v)">
+        <div class="cb-option-label">${_cbEsc(m.label)}</div>
+      </div>`).join('')
+    : `<div class="cb-empty">No tienes oportunidades activas en SAP. Escribe el cliente manualmente.</div>`;
+
+  const clienteCard = `<div class="card">
     <div class="card-title-row">
       <div class="card-title">Cliente <span class="req">*</span></div>
       ${refreshBtn}
     </div>
-    <input type="text" id="cliente-nombre" list="clientes-list"
-           placeholder="Empieza a escribir el nombre del cliente..."
-           oninput="onClienteCambio(this.value)" autocomplete="off">
-    <datalist id="clientes-list">${datalistOpts}</datalist>
-    ${aunCargando?'<div class="hint-piloto">Cargando tus oportunidades de SAP...</div>':''}
+    <div class="combobox" id="cb-cliente">
+      <input type="text" id="cb-cliente-input"
+             value="${_cbAttr(clienteCommit)}"
+             placeholder="Buscar cliente..."
+             oninput="cbFilter('cb-cliente', this.value)"
+             onfocus="cbOpen('cb-cliente')"
+             onblur="cbBlur('cb-cliente')"
+             onkeydown="cbKeydown(event, 'cb-cliente')"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="combobox-list" id="cb-cliente-list" hidden
+           onmousedown="event.preventDefault()">${clienteListHTML}</div>
+    </div>
   </div>`;
 
-  let oppCard='';
-  if(clienteActual && ops.length>0){
-    const opcionesHTML=ops.map(o=>{
-      const monto=o.MontoEstimado?`$${o.MontoEstimado.toLocaleString('es-MX')} MXP`:'sin monto';
-      const sel=opSel && String(opSel.NumOportunidad)===String(o.NumOportunidad)?'selected':'';
-      const desc=String(o.Descripcion||'(sin descripción)').replace(/</g,'&lt;');
-      return `<option value="${o.NumOportunidad}" ${sel}>${desc} · ${o.Marca} · ${monto}</option>`;
-    }).join('');
-    const placeholderOpt=ops.length>1 && !opSel?'<option value="">— Elige una —</option>':'';
-    const banner=opSel?`<div class="opp-banner">
-      <strong>${String(opSel.Descripcion||'(sin descripción)').replace(/</g,'&lt;')}</strong>
-      · ${opSel.Marca||'(sin marca)'}
+  // Combobox de oportunidad o fallback
+  let oppCard = '';
+  if(clienteCommit && ops.length > 0){
+    const oppItems = ops.map(o => ({
+      value: String(o.NumOportunidad),
+      label: (String(o.Descripcion||'(sin descripción)') + (o.Marca ? ' · '+o.Marca : '')).trim(),
+      subtext: `$${(o.MontoEstimado||0).toLocaleString('es-MX')} MXP · etapa: ${o.Etapa||'—'}`
+    }));
+    cbInit('cb-opp', oppItems, 'opp');
+    const oppInputValue = opSel
+      ? (String(opSel.Descripcion||'(sin descripción)') + (opSel.Marca ? ' · '+opSel.Marca : '')).trim()
+      : '';
+    const oppListHTML = oppItems.map(m => `<div class="cb-option" data-v="${_cbAttr(m.value)}"
+        onmousedown="event.preventDefault(); cbSelect('cb-opp', this.dataset.v)">
+        <div class="cb-option-label">${_cbEsc(m.label)}</div>
+        <div class="cb-option-sub">${_cbEsc(m.subtext)}</div>
+      </div>`).join('');
+    const banner = opSel ? `<div class="opp-banner">
+      <strong>${_cbEsc(opSel.Descripcion||'(sin descripción)')}</strong>
+      · ${_cbEsc(opSel.Marca||'(sin marca)')}
       · originalmente $${(opSel.MontoEstimado||0).toLocaleString('es-MX')} MXP
-      · etapa actual: ${opSel.Etapa||'(sin etapa)'}
-    </div>`:'';
-    oppCard=`<div class="card">
+      · etapa actual: ${_cbEsc(opSel.Etapa||'(sin etapa)')}
+    </div>` : '';
+    oppCard = `<div class="card">
       <div class="card-title">Selecciona la oportunidad <span class="req">*</span></div>
-      <select id="opp-select" onchange="selOportunidad(this.value)">${placeholderOpt}${opcionesHTML}</select>
+      <div class="combobox" id="cb-opp">
+        <input type="text" id="cb-opp-input"
+               value="${_cbAttr(oppInputValue)}"
+               placeholder="Buscar oportunidad..."
+               oninput="cbFilter('cb-opp', this.value)"
+               onfocus="cbOpen('cb-opp')"
+               onblur="cbBlur('cb-opp')"
+               onkeydown="cbKeydown(event, 'cb-opp')"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <div class="combobox-list" id="cb-opp-list" hidden
+             onmousedown="event.preventDefault()">${oppListHTML}</div>
+      </div>
       ${banner}
     </div>`;
-  } else if(clienteActual){
-    oppCard=`<div class="card">
+  } else if(clienteCommit){
+    oppCard = `<div class="card">
       <div class="card-title">Oportunidad</div>
       <div class="hint-piloto">No hay oportunidades activas con este cliente en SAP. Captura el nombre manualmente.</div>
       <div class="field-label">Nombre de la oportunidad <span class="req">*</span></div>
@@ -305,7 +496,7 @@ function renderBloqueClienteYOpp(){
     </div>`;
   }
 
-  return { html: clienteCard+oppCard, esFallback, opSel };
+  return { html: clienteCard + oppCard, esFallback, opSel };
 }
 
 function renderForm(){
@@ -665,8 +856,6 @@ function filtrarLideres(q){
 
 async function guardar() {
   guardarCampos();
-  const cliente = STATE.campos['cliente-nombre']?.trim();
-  if (!cliente) { alert('Falta el nombre del cliente'); return; }
 
   const esGanada = STATE.tipo === 'oportunidad' && STATE.resultado === 'ganada';
   const esPerdida = STATE.tipo === 'oportunidad' && STATE.resultado === 'perdida';
@@ -674,6 +863,12 @@ async function guardar() {
   const esCierre = esGanada || esPerdida;
   const esSubflujoOpp = esCierre || esAvance;
   const opSel = STATE.oportunidadSeleccionada;
+
+  // Cliente: sub-flujos leen del commit del combobox; visita/demo del input regular.
+  const cliente = esSubflujoOpp
+    ? (STATE.clienteCommit?.trim() || '')
+    : (STATE.campos['cliente-nombre']?.trim() || '');
+  if (!cliente) { alert('Falta el nombre del cliente'); return; }
 
   // Validaciones por caso
   if (esSubflujoOpp) {
@@ -820,8 +1015,12 @@ window.cambiarModo          = cambiarModo;
 window.selResultadoOpp      = selResultadoOpp;
 window.volverSelectorOpp    = volverSelectorOpp;
 window.selRazonPerdida      = selRazonPerdida;
-window.onClienteCambio      = onClienteCambio;
-window.selOportunidad       = selOportunidad;
+window.cbOpen               = cbOpen;
+window.cbClose              = cbClose;
+window.cbFilter             = cbFilter;
+window.cbSelect             = cbSelect;
+window.cbBlur               = cbBlur;
+window.cbKeydown            = cbKeydown;
 window.refrescarOportunidades = refrescarOportunidades;
 window.onOportunidadesCargadas = onOportunidadesCargadas;
 

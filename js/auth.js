@@ -37,10 +37,15 @@ async function iniciarApp(account) {
     // Carga async — no bloquea la entrada a Home. Cuando termina,
     // si el form Avanzó/Ganada/Perdida ya está abierto, app.js refresca el dropdown.
     if (STATE.asesorSAP) {
+      STATE.opsLoading = true;
       cargarOportunidadesAsesor().then(ops => {
         STATE.oportunidades = ops;
+        STATE.opsLoading = false;
         if (typeof onOportunidadesCargadas === 'function') onOportunidadesCargadas();
       });
+    } else {
+      // Usuario sin asesor → no hay nada que cargar, no mostrar "Cargando..." indefinido.
+      STATE.opsLoading = false;
     }
   }
 
