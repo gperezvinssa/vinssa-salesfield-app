@@ -160,6 +160,14 @@ La app obtiene el email del usuario logueado vía MSAL (`account.username`, equi
 
 Si el usuario logueado no está en el mapeo, `STATE.asesorSAP` queda `null` y los tres sub-flujos de Actualizar Oportunidad (Avanzó / Se ganó / Se perdió) muestran un mensaje de "función en piloto" dentro del form. Los flujos de Nueva Visita y Demo Realizada siguen funcionando normalmente para todos los usuarios.
 
+### UX del combobox de cliente/oportunidad (Actualizar Oportunidad)
+
+Decisiones que se tomaron durante el piloto, no obvias del código:
+
+- **No hacer auto-focus al input de cliente** al entrar a Avanzó/Ganada/Perdida. En celular, auto-focus dispara el teclado virtual inmediatamente, tapando el form antes de que el asesor vea qué tiene que llenar. El asesor tapea cuando esté listo.
+- **Auto-selección de la oportunidad cuando el cliente tiene UNA sola opp activa.** Reduce taps: el asesor selecciona cliente → si solo tiene una opp en SAP, esa queda pre-seleccionada con banner de contexto + monto pre-llenado (en Ganada). Implementado en `cbCommitCliente` (app.js): `if (ops.length === 1) STATE.oportunidadSeleccionada = ops[0]`.
+- **Click fuera del combobox cierra la lista sin commit.** Listener global en `document.click` cierra cualquier combobox abierto cuyo click target no esté dentro de `.combobox`. Cerrar ≠ comittear: el commit (incluyendo fallback de cliente nuevo) ocurre vía `cbBlur` cuando el input pierde focus naturalmente, no por outside-click.
+
 ---
 
 ## Common tasks — where to edit
@@ -185,6 +193,7 @@ Si el usuario logueado no está en el mapeo, `STATE.asesorSAP` queda `null` y lo
 - **Field App test users:** `gperez@vinssa.com` (Gerardo) and `vinssabi@vinssa.com` (service account).
 - **After any SAP query change:** Re-export to xlsx, format Fecha as text, upload to SharePoint, clear the Graph cache (snippet above), reload.
 - **Spot-check numbers:** Validate against SAP directly before declaring a change correct. The current Dir·Todos numbers are still under validation.
+- **UI changes need mobile validation before commit.** Field App es mobile-first; los flujos críticos viven en celular. Cambios de UI (forms, combobox, layout) que se ven OK en desktop pueden fallar en celular por: zoom de iOS Safari (font-size < 16px en inputs), teclado virtual tapando viewport, scrollbars duplicados (choque de inline `display:block` vs CSS `display:flex`), o tap targets muy chicos. No commit hasta probar en celular real con `Ctrl+Shift+R` para invalidar service worker.
 
 ---
 
