@@ -43,7 +43,12 @@ const STATE={
   // True cuando el asesor entró a screen-checkin desde el botón [Cambiar] del form
   // (visita en curso) en vez de desde el selector inicial. Diferencia los dos flows:
   // false → capturar GPS; true → solo actualizar GEO.checkin sin re-GPS.
-  cambiandoCliente:false
+  cambiandoCliente:false,
+  // True cuando screen-checkin se acaba de abrir (entry points). renderCheckin lo
+  // consume una sola vez para hacer auto-focus + auto-open del dropdown, evitando
+  // que re-renders disparados por cbCommitClienteCheckin reabran la lista (causaba
+  // parpadeo en desktop y síntoma de "dropdown no cierra al seleccionar").
+  checkinAcabaDeAbrirse:false
 };
 
 function guardarCampos(){
@@ -358,16 +363,21 @@ function renderCheckin(){
       ${btnHelp}
     </div>`;
 
-  // Auto-focus + lista pre-poblada inmediata. El propósito ÚNICO de esta pantalla
-  // es capturar el cliente; no hay otros campos que el teclado virtual pueda tapar,
-  // así que la regla "no auto-focus en mobile" no aplica aquí.
-  setTimeout(() => {
-    const input = _cbInput(CB_CLI_BOX);
-    if(input){
-      input.focus();
-      cbCliActivoOpen();
-    }
-  }, 100);
+  // Auto-focus + lista pre-poblada SOLO en el mount inicial de screen-checkin.
+  // Los re-renders disparados por cbCommitClienteCheckin (tras seleccionar opción)
+  // NO deben reabrir la lista — eso causaba parpadeo en desktop y el síntoma de
+  // "dropdown no cierra al seleccionar". El flag se setea en los 3 entry points
+  // (seleccionarModo/mostrarModalCheckin/abrirCambiarCliente) y se consume aquí.
+  if(STATE.checkinAcabaDeAbrirse){
+    STATE.checkinAcabaDeAbrirse = false;
+    setTimeout(() => {
+      const input = _cbInput(CB_CLI_BOX);
+      if(input){
+        input.focus();
+        cbCliActivoOpen();
+      }
+    }, 100);
+  }
 }
 
 async function confirmarCheckin(){
@@ -430,6 +440,7 @@ function abrirCambiarCliente(){
       esNuevo: !!GEO.checkin.esNuevo
     };
   }
+  STATE.checkinAcabaDeAbrirse = true;
   mostrarScreen('screen-checkin');
   renderCheckin();
 }
@@ -459,29 +470,22 @@ document.addEventListener('click', (e) => {
 const CB_CLI_BOX = 'cb-cli-activo';
 const CB_CLI_CAP = 30;
 
-// Construye la lista priorizada UNA VEZ al abrir el combobox. El sort no depende
-// del filter, así que cachearlo evita recalcular en cada keystroke.
+// Orden alfabético puro por Cliente. La priorización por asesor + estatus está
+// deferida hasta que los datos de asignación en SAP sean confiables (~32% de
+// clientes están bajo MOSTRADOR o sin asesor, muchas asignaciones no reflejan
+// operación real). Ver pending work en CLAUDE.md.
 function _cbCliActivoOrdenar(items){
-  const asesor = normCliente(STATE.asesorSAP || '');
-  const byCliente = (a, b) => a.cliente.localeCompare(b.cliente, 'es', {sensitivity:'base'});
-  const g1 = [], g2 = [], g3 = [], g4 = [];
-  items.forEach(c => {
-    const mio = asesor && normCliente(c.asesor) === asesor;
-    const activo = c.estatusComercial === 'Activo';
-    if(mio && activo) g1.push(c);
-    else if(mio) g2.push(c);
-    else if(activo) g3.push(c);
-    else g4.push(c);
-  });
-  return [...g1.sort(byCliente), ...g2.sort(byCliente), ...g3.sort(byCliente), ...g4.sort(byCliente)];
+  return [...items].sort((a, b) =>
+    a.Cliente.localeCompare(b.Cliente, 'es', {sensitivity:'base'})
+  );
 }
 
 // Subtext de cada opción: "Asesor · Ciudad" (la ciudad NO entra al filtro, es
 // solo info para distinguir clientes con nombres similares).
 function _cbCliActivoSubtext(c){
   const partes = [];
-  if(c.asesor) partes.push(c.asesor);
-  if(c.ciudad) partes.push(c.ciudad);
+  if(c.Asesor) partes.push(c.Asesor);
+  if(c.Ciudad) partes.push(c.Ciudad);
   return partes.join(' · ');
 }
 
@@ -521,11 +525,11 @@ function cbCliActivoRenderList(){
   const cb = CB_STATE[CB_CLI_BOX]; const list = _cbList(CB_CLI_BOX);
   if(!cb || !list) return;
   const f = normCliente(cb.filter);
-  // Filtrado SOLO contra cliente (decisión explícita: la ciudad se ve en subtext
+  // Filtrado SOLO contra Cliente (decisión explícita: la ciudad se ve en subtext
   // pero no es parámetro de búsqueda — evita ambigüedad y resultados anchos).
   let matches, hint = '';
   if(f){
-    matches = cb.items.filter(c => normCliente(c.cliente).includes(f));
+    matches = cb.items.filter(c => normCliente(c.Cliente).includes(f));
   } else {
     // Sin filtro: top CB_CLI_CAP del orden priorizado. Si hay más, hint al fondo.
     matches = cb.items.slice(0, CB_CLI_CAP);
@@ -542,9 +546,9 @@ function cbCliActivoRenderList(){
       const hl = i === cb.highlighted ? ' cb-hl' : '';
       const sub = _cbCliActivoSubtext(m);
       const subHtml = sub ? `<div class="cb-option-sub">${_cbEsc(sub)}</div>` : '';
-      return `<div class="cb-option${hl}" data-v="${_cbAttr(m.cardCode)}"
+      return `<div class="cb-option${hl}" data-v="${_cbAttr(m.CardCode)}"
                    onmousedown="event.preventDefault(); cbCliActivoSelect(this.dataset.v)">
-        <div class="cb-option-label">${_cbEsc(m.cliente)}</div>${subHtml}
+        <div class="cb-option-label">${_cbEsc(m.Cliente)}</div>${subHtml}
       </div>`;
     }).join('');
     const hintHtml = hint ? `<div class="cb-empty" style="font-size:11px;opacity:.7">${_cbEsc(hint)}</div>` : '';
@@ -558,16 +562,19 @@ function cbCliActivoRenderList(){
 
 function cbCliActivoSelect(cardCode){
   const cb = CB_STATE[CB_CLI_BOX]; if(!cb) return;
-  const cli = cb.items.find(c => c.cardCode === cardCode);
+  const cli = cb.items.find(c => c.CardCode === cardCode);
   if(!cli) return;
   const input = _cbInput(CB_CLI_BOX);
-  if(input) input.value = cli.cliente;
+  if(input) input.value = cli.Cliente;
   cbCliActivoClose();
+  // El draft (clienteCheckinDraft) usa shape lowercase {nombre, cardCode, ...}
+  // porque NO viene del xlsx — es estado interno consumido por geo.js (checkin/
+  // cambiarClienteCheckin). Solo STATE.clientesActivos mantiene capitalización xlsx.
   cbCommitClienteCheckin({
-    nombre: cli.cliente,
-    cardCode: cli.cardCode,
-    ciudad: cli.ciudad,
-    estatus: cli.estatusComercial,
+    nombre: cli.Cliente,
+    cardCode: cli.CardCode,
+    ciudad: cli.Ciudad,
+    estatus: cli.EstatusComercial,
     esNuevo: false
   });
 }
@@ -586,14 +593,14 @@ function cbCliActivoBlur(){
       return;
     }
     // Match exacto normalizado → tratar como selección formal del cliente real.
-    const exact = cb.items.find(c => normCliente(c.cliente) === normCliente(typed));
+    const exact = cb.items.find(c => normCliente(c.Cliente) === normCliente(typed));
     if(exact){
-      if(input) input.value = exact.cliente;
+      if(input) input.value = exact.Cliente;
       cbCommitClienteCheckin({
-        nombre: exact.cliente,
-        cardCode: exact.cardCode,
-        ciudad: exact.ciudad,
-        estatus: exact.estatusComercial,
+        nombre: exact.Cliente,
+        cardCode: exact.CardCode,
+        ciudad: exact.Ciudad,
+        estatus: exact.EstatusComercial,
         esNuevo: false
       });
     } else {
@@ -626,8 +633,8 @@ function cbCliActivoKeydown(event){
     if(!cb.open) return;
     event.preventDefault();
     const m = cb._lastMatches || cb.items;
-    if(cb.highlighted >= 0 && m[cb.highlighted]) cbCliActivoSelect(m[cb.highlighted].cardCode);
-    else if(m.length === 1) cbCliActivoSelect(m[0].cardCode);
+    if(cb.highlighted >= 0 && m[cb.highlighted]) cbCliActivoSelect(m[cb.highlighted].CardCode);
+    else if(m.length === 1) cbCliActivoSelect(m[0].CardCode);
     else { const inp = _cbInput(CB_CLI_BOX); if(inp) inp.blur(); }
   } else if(event.key === 'Escape'){
     cbCliActivoClose();
@@ -739,6 +746,7 @@ async function seleccionarModo(modo) {
     // Sin check-in: abrir screen-checkin con autocomplete sobre Clientes Activos.
     STATE.cambiandoCliente = false;
     STATE.clienteCheckinDraft = null;
+    STATE.checkinAcabaDeAbrirse = true;
     mostrarScreen('screen-checkin');
     renderCheckin();
   }
@@ -1401,6 +1409,7 @@ async function guardar() {
 function mostrarModalCheckin() {
   STATE.cambiandoCliente = false;
   STATE.clienteCheckinDraft = null;
+  STATE.checkinAcabaDeAbrirse = true;
   mostrarScreen('screen-checkin');
   renderCheckin();
 }

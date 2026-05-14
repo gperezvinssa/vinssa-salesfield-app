@@ -480,15 +480,19 @@ async function cargarClientesActivos() {
         return obj;
       });
 
+    // Mantener las llaves originales del xlsx (CardCode, Cliente, Asesor, Ciudad,
+    // Estado, EstatusComercial) sin convertir a camelCase. Convención del proyecto:
+    // STATE.* preserva la capitalización del xlsx/SAP — consistente con STATE.oportunidades
+    // y simplifica migración futura a Service Layer (donde los campos son PascalCase).
     const clientes = rows
       .filter(r => r.CardCode && r.Cliente)
       .map(r => ({
-        cardCode:        String(r.CardCode || '').trim(),
-        cliente:         String(r.Cliente || '').trim(),
-        asesor:          String(r.Asesor || '').trim(),
-        ciudad:          String(r.Ciudad || '').trim(),
-        estado:          String(r.Estado || '').trim(),
-        estatusComercial: String(r.EstatusComercial || '').trim()
+        CardCode:        String(r.CardCode || '').trim(),
+        Cliente:         String(r.Cliente || '').trim(),
+        Asesor:          String(r.Asesor || '').trim(),
+        Ciudad:          String(r.Ciudad || '').trim(),
+        Estado:          String(r.Estado || '').trim(),
+        EstatusComercial: String(r.EstatusComercial || '').trim()
       }));
 
     console.log(`Clientes activos cargados: ${clientes.length}`);

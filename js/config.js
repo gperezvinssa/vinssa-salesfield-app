@@ -68,6 +68,8 @@ const EMAIL_A_ASESOR = {
   'kportillo@vinssa.com': 'KIMBERLY PORTILLO',
   // OVERRIDE TEMPORAL: permite al Director (Gerardo) probar el flujo end-to-end
   // durante la fase de pulido del piloto sin requerir login con cuenta de asesor.
+  // Mapeado a RAMON VILLEGAS porque tiene cartera real significativa (~76 clientes)
+  // — permite probar el autocomplete y la priorización futura con datos densos.
   // ELIMINAR esta entrada antes de expandir el piloto a más asesores.
-  'gperez@vinssa.com': 'KIMBERLY PORTILLO'
+  'gperez@vinssa.com': 'RAMON VILLEGAS'
 };
