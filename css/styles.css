@@ -360,17 +360,17 @@ textarea { min-height: 70px; resize: none; }
   background: var(--color-background-primary, #FFFFFF);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-sm);
-  max-height: 250px;
+  /* 60vh = ~60% del viewport; se adapta a celular con teclado abierto.
+     En desktop alto da ~480px, en celular ~400px sin teclado, ~300px con teclado. */
+  max-height: 60vh;
   overflow-y: auto;
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  /* Margen para que no pegue al borde inferior del card en celular */
   margin-bottom: 8px;
 }
 .cb-option {
-  padding: 10px 12px;
+  padding: 12px 14px;
   cursor: pointer;
   border-bottom: 0.5px solid var(--color-border-tertiary, #EFEEE8);
-  /* Tap area: ~44px efectivo entre padding y line-height del label+sub */
 }
 .cb-option:last-child {
   border-bottom: none;
