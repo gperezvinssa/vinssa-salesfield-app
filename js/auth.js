@@ -47,6 +47,17 @@ async function iniciarApp(account) {
       // Usuario sin asesor → no hay nada que cargar, no mostrar "Cargando..." indefinido.
       STATE.opsLoading = false;
     }
+
+    // Clientes Activos: se carga para TODOS los usuarios (independiente de asesorSAP)
+    // porque el autocomplete de check-in debe servir incluso a usuarios sin mapeo a
+    // asesor SAP — caen al grupo 4 (alfabético) en la priorización.
+    STATE.clientesActivos = [];
+    STATE.clientesLoading = true;
+    cargarClientesActivos().then(clientes => {
+      STATE.clientesActivos = clientes;
+      STATE.clientesLoading = false;
+      if (typeof onClientesActivosCargados === 'function') onClientesActivosCargados();
+    });
   }
 
   document.getElementById('screen-login').style.display = 'none';

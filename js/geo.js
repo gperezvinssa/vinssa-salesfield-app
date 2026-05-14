@@ -89,11 +89,17 @@ async function capturarGPSAlGuardar(datosRegistro) {
 
 // ── CAPA 2 — Check-in / Check-out ───────────────────────────────────────────
 
-async function checkin(clienteNombre) {
+// Recibe objeto clienteInfo con: { nombre, cardCode, ciudad, estatus, esNuevo }.
+// nombre es lo único obligatorio; cardCode null cuando es prospecto/fallback texto libre.
+async function checkin(clienteInfo) {
   try {
     const pos = await obtenerPosicion();
     GEO.checkin = {
-      cliente: clienteNombre,
+      cliente: clienteInfo.nombre,
+      cardCode: clienteInfo.cardCode || null,
+      ciudad: clienteInfo.ciudad || '',
+      estatus: clienteInfo.estatus || '',
+      esNuevo: !!clienteInfo.esNuevo,
       gps: pos,
       horaEntrada: new Date().toISOString()
     };
@@ -101,18 +107,35 @@ async function checkin(clienteNombre) {
 
     guardarRegistroGeo({
       tipo: 'checkin',
-      cliente: clienteNombre,
+      cliente: clienteInfo.nombre,
+      cardCode: clienteInfo.cardCode || null,
       asesor: CONFIG.usuario.email,
       gps: pos,
       hora: GEO.checkin.horaEntrada
     });
 
-    actualizarBotonCheckin(true, clienteNombre);
+    actualizarBotonCheckin(true, clienteInfo.nombre);
     return GEO.checkin;
   } catch(e) {
     alert('No se pudo obtener tu ubicación. Verifica que el GPS esté activado.');
     return null;
   }
+}
+
+// Cambia el cliente del check-in en curso (botón [Cambiar] desde el form).
+// NO toca GPS ni horaEntrada — esos representan ubicación física y momento de
+// llegada, que no cambian por corregir un nombre. Si el asesor genuinamente se
+// movió a otro cliente, debe hacer checkout y checkin nuevo.
+function cambiarClienteCheckin(clienteInfo) {
+  if (!GEO.checkin) return null;
+  GEO.checkin.cliente  = clienteInfo.nombre;
+  GEO.checkin.cardCode = clienteInfo.cardCode || null;
+  GEO.checkin.ciudad   = clienteInfo.ciudad || '';
+  GEO.checkin.estatus  = clienteInfo.estatus || '';
+  GEO.checkin.esNuevo  = !!clienteInfo.esNuevo;
+  localStorage.setItem('vinssa_checkin_activo', JSON.stringify(GEO.checkin));
+  actualizarBotonCheckin(true, clienteInfo.nombre);
+  return GEO.checkin;
 }
 
 async function checkout() {
@@ -250,5 +273,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
 window.checkin              = checkin;
 window.checkout             = checkout;
+window.cambiarClienteCheckin = cambiarClienteCheckin;
 window.exportarDatosGeo     = exportarDatosGeo;
 window.capturarGPSAlGuardar = capturarGPSAlGuardar;

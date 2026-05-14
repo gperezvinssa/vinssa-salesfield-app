@@ -27,18 +27,29 @@ const STATE={
   resultado:null,                      // null=sub-selector | 'avance' | 'ganada' | 'perdida'
   razonPerdida:null,                   // string elegido cuando resultado='perdida'
   lideres:[],competidores:[],contactoNuevo:false,moneda:'MXP',
-  clienteExiste:true,
   campos:{},
   // Piloto de Actualizar Oportunidad: combobox de clientes y oportunidades.
   asesorSAP:null,                      // se resuelve en auth.js desde EMAIL_A_ASESOR
   oportunidades:[],                    // poblado async tras login
   opsLoading:true,                     // true hasta que termine la primera carga
   clienteCommit:'',                    // cliente "settled" (post-commit del combobox)
-  oportunidadSeleccionada:null         // objeto opp completo cuando el asesor elige una
+  oportunidadSeleccionada:null,        // objeto opp completo cuando el asesor elige una
+  // Check-in: autocomplete sobre Clientes Activos.xlsx (~2800). Carga async.
+  clientesActivos:[],                  // poblado async tras login (auth.js)
+  clientesLoading:true,                // true hasta que termine la primera carga
+  // Draft del check-in: cliente seleccionado/tipeado ANTES de tap "Iniciar visita".
+  // El draft NO toca GEO.checkin — eso solo lo hace checkin() tras capturar GPS.
+  clienteCheckinDraft:null,            // { nombre, cardCode, ciudad, estatus, esNuevo }
+  // True cuando el asesor entró a screen-checkin desde el botón [Cambiar] del form
+  // (visita en curso) en vez de desde el selector inicial. Diferencia los dos flows:
+  // false → capturar GPS; true → solo actualizar GEO.checkin sin re-GPS.
+  cambiandoCliente:false
 };
 
 function guardarCampos(){
-  ['cliente-nombre','cliente-contacto','producto','monto','cierre','presupuesto','opp-nombre','notas','c-nombre','c-puesto','c-tel','c-email','monto-final','fecha-cierre-real','razon-perdida-detalle'].forEach(id=>{
+  // 'cliente-nombre' ya no existe en el form (heredado del check-in). Solo persisten
+  // los inputs que el form sí renderiza, para sobrevivir re-renders por toggles.
+  ['cliente-contacto','producto','monto','cierre','presupuesto','opp-nombre','notas','c-nombre','c-puesto','c-tel','c-email','monto-final','fecha-cierre-real','razon-perdida-detalle'].forEach(id=>{
     const el=$(id);if(el)STATE.campos[id]=el.value;
   });
 }
@@ -265,15 +276,371 @@ function onOportunidadesCargadas(){
   }
 }
 
+// Hook llamado por auth.js cuando termina la carga async de Clientes Activos.
+// Si la screen-checkin ya está abierta esperando datos, re-renderiza para que
+// la lista pre-poblada aparezca sin necesidad de reabrir.
+function onClientesActivosCargados(){
+  STATE.clientesLoading = false;
+  if(document.getElementById('screen-checkin')?.classList.contains('active')){
+    renderCheckin();
+  }
+}
+
+// ── Screen de Check-in ──────────────────────────────────────────────────────
+// Reemplaza el prompt() nativo de check-in. Captura cliente vía autocomplete
+// sobre Clientes Activos.xlsx con priorización por asesor + estatus comercial.
+
+function renderCheckin(){
+  const draft = STATE.clienteCheckinDraft;
+  const cambiando = STATE.cambiandoCliente;
+  const titulo = cambiando ? 'Cambiar cliente' : 'Check-in';
+
+  if(STATE.clientesLoading){
+    document.getElementById('screen-checkin').innerHTML = `
+      <header class="top-bar">
+        <button class="back-btn" onclick="cancelarCheckin()">← Atrás</button>
+        <div style="color:white;font-size:14px;font-weight:500">${titulo}</div>
+        <div style="width:50px"></div>
+      </header>
+      <div class="form-body">
+        <div class="hint-piloto" style="margin-top:24px">Cargando lista de clientes activos de SAP...</div>
+      </div>`;
+    return;
+  }
+
+  // Init del combobox: ordena por prioridad una vez. Si ya estaba init, sobrescribe
+  // (los items son los mismos array reference, el sort es estable).
+  cbCliActivoInit(STATE.clientesActivos);
+
+  const inputValue = draft ? draft.nombre : '';
+  const nuevoBadge = draft && draft.esNuevo
+    ? `<div class="hint-piloto" style="margin-top:8px;color:#A85F0A">Cliente nuevo — se guardará sin CardCode.</div>`
+    : '';
+  const previaCard = draft && !draft.esNuevo
+    ? `<div class="opp-banner" style="margin-top:8px">
+        <strong>${_cbEsc(draft.nombre)}</strong>
+        ${draft.ciudad ? '· '+_cbEsc(draft.ciudad) : ''}
+        ${draft.estatus ? '· '+_cbEsc(draft.estatus) : ''}
+      </div>`
+    : '';
+
+  const btnLabel = cambiando ? 'Confirmar cambio' : 'Iniciar visita';
+  const btnDisabled = !draft ? 'disabled' : '';
+  const btnHelp = !draft
+    ? `<div class="hint-piloto" style="text-align:center;margin-top:8px">Selecciona un cliente o escribe el nombre para continuar.</div>`
+    : '';
+
+  document.getElementById('screen-checkin').innerHTML = `
+    <header class="top-bar">
+      <button class="back-btn" onclick="cancelarCheckin()">← Atrás</button>
+      <div style="color:white;font-size:14px;font-weight:500">${titulo}</div>
+      <div style="width:50px"></div>
+    </header>
+    <div class="form-body">
+      <div class="card">
+        <div class="card-title">¿Con qué cliente estás?</div>
+        <div class="combobox" id="${CB_CLI_BOX}">
+          <input type="text" id="${CB_CLI_BOX}-input"
+                 value="${_cbAttr(inputValue)}"
+                 placeholder="Buscar cliente..."
+                 oninput="cbCliActivoFilter(this.value)"
+                 onfocus="cbCliActivoOpen()"
+                 onblur="cbCliActivoBlur()"
+                 onkeydown="cbCliActivoKeydown(event)"
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <div class="combobox-list" id="${CB_CLI_BOX}-list" hidden
+               onmousedown="event.preventDefault()"></div>
+        </div>
+        ${previaCard}
+        ${nuevoBadge}
+      </div>
+      <button class="save-btn" onclick="confirmarCheckin()" ${btnDisabled}>${btnLabel}</button>
+      ${btnHelp}
+    </div>`;
+
+  // Auto-focus + lista pre-poblada inmediata. El propósito ÚNICO de esta pantalla
+  // es capturar el cliente; no hay otros campos que el teclado virtual pueda tapar,
+  // así que la regla "no auto-focus en mobile" no aplica aquí.
+  setTimeout(() => {
+    const input = _cbInput(CB_CLI_BOX);
+    if(input){
+      input.focus();
+      cbCliActivoOpen();
+    }
+  }, 100);
+}
+
+async function confirmarCheckin(){
+  const draft = STATE.clienteCheckinDraft;
+  if(!draft){ alert('Selecciona un cliente o escribe su nombre.'); return; }
+
+  if(STATE.cambiandoCliente){
+    // Flujo [Cambiar]: actualiza GEO.checkin sin re-capturar GPS.
+    cambiarClienteCheckin(draft);
+    STATE.cambiandoCliente = false;
+    STATE.clienteCheckinDraft = null;
+    mostrarScreen('screen-form');
+    return;
+  }
+
+  // Flujo normal: switch a home ANTES de GPS para que el prompt de permisos del
+  // browser se vea sobre home (no sobre screen-checkin), luego captura GPS.
+  STATE.modo = 'campo';
+  renderHome();
+  mostrarScreen('screen-home');
+  const result = await checkin(draft);
+  if(!result){
+    // GPS denegado: revertir al selector.
+    STATE.modo = null;
+    STATE.clienteCheckinDraft = null;
+    renderHome();
+    return;
+  }
+  STATE.clienteCheckinDraft = null;
+  renderHome();
+}
+
+function cancelarCheckin(){
+  if(STATE.cambiandoCliente){
+    // [Cambiar] cancelado → vuelve al form con el cliente original intacto.
+    STATE.cambiandoCliente = false;
+    STATE.clienteCheckinDraft = null;
+    mostrarScreen('screen-form');
+    return;
+  }
+  // Check-in inicial cancelado → vuelve al selector de modo.
+  STATE.modo = null;
+  STATE.clienteCheckinDraft = null;
+  renderHome();
+  mostrarScreen('screen-home');
+}
+
+// Botón [Cambiar] desde el form: re-abre screen-checkin sin re-capturar GPS.
+function abrirCambiarCliente(){
+  guardarCampos();
+  STATE.cambiandoCliente = true;
+  // Pre-poblar el draft con el cliente actual del check-in para que el botón
+  // "Confirmar cambio" funcione si el asesor no toca nada (idempotente).
+  if(GEO.checkin){
+    STATE.clienteCheckinDraft = {
+      nombre: GEO.checkin.cliente,
+      cardCode: GEO.checkin.cardCode,
+      ciudad: GEO.checkin.ciudad || '',
+      estatus: GEO.checkin.estatus || '',
+      esNuevo: !!GEO.checkin.esNuevo
+    };
+  }
+  mostrarScreen('screen-checkin');
+  renderCheckin();
+}
+
 // Click fuera de cualquier combobox abierto → cerrarlo. Necesario en mobile
 // donde el blur nativo del input no siempre se dispara al tapear elementos
 // no interactivos (cards, fondo, etc.) y la lista se queda abierta.
+// Maneja ambos pools (cb-cliente/cb-opp del flujo Opp y cb-cli-activo del check-in).
 document.addEventListener('click', (e) => {
   if(e.target.closest && e.target.closest('.combobox')) return;
   Object.keys(CB_STATE).forEach(boxId => {
-    if(CB_STATE[boxId] && CB_STATE[boxId].open) cbClose(boxId);
+    if(CB_STATE[boxId] && CB_STATE[boxId].open){
+      if(CB_STATE[boxId].kind === 'clienteActivo') cbCliActivoClose(boxId);
+      else cbClose(boxId);
+    }
   });
 });
+
+// ── Combobox de Clientes Activos (check-in) ─────────────────────────────────
+// Duplicación deliberada del combobox de Actualizar Oportunidad: comportamientos
+// parecidos pero NO idénticos (priorización por asesor+estatus, dos líneas con
+// subtext, fallback "cliente nuevo" sin CardCode, cap de 30 en lista inicial).
+// Mantener funciones paralelas evita riesgo de regresión en el flujo Opp ya
+// validado con Kimberly. Helpers genéricos (_cbEsc, _cbAttr, normCliente, CB_STATE)
+// sí se reutilizan.
+
+const CB_CLI_BOX = 'cb-cli-activo';
+const CB_CLI_CAP = 30;
+
+// Construye la lista priorizada UNA VEZ al abrir el combobox. El sort no depende
+// del filter, así que cachearlo evita recalcular en cada keystroke.
+function _cbCliActivoOrdenar(items){
+  const asesor = normCliente(STATE.asesorSAP || '');
+  const byCliente = (a, b) => a.cliente.localeCompare(b.cliente, 'es', {sensitivity:'base'});
+  const g1 = [], g2 = [], g3 = [], g4 = [];
+  items.forEach(c => {
+    const mio = asesor && normCliente(c.asesor) === asesor;
+    const activo = c.estatusComercial === 'Activo';
+    if(mio && activo) g1.push(c);
+    else if(mio) g2.push(c);
+    else if(activo) g3.push(c);
+    else g4.push(c);
+  });
+  return [...g1.sort(byCliente), ...g2.sort(byCliente), ...g3.sort(byCliente), ...g4.sort(byCliente)];
+}
+
+// Subtext de cada opción: "Asesor · Ciudad" (la ciudad NO entra al filtro, es
+// solo info para distinguir clientes con nombres similares).
+function _cbCliActivoSubtext(c){
+  const partes = [];
+  if(c.asesor) partes.push(c.asesor);
+  if(c.ciudad) partes.push(c.ciudad);
+  return partes.join(' · ');
+}
+
+function cbCliActivoInit(items){
+  const ordenados = _cbCliActivoOrdenar(items);
+  CB_STATE[CB_CLI_BOX] = {
+    items: ordenados,    // ya ordenados por prioridad — el orden se mantiene en filtros
+    filter: '',
+    highlighted: -1,
+    open: false,
+    kind: 'clienteActivo'
+  };
+}
+
+function cbCliActivoOpen(){
+  const cb = CB_STATE[CB_CLI_BOX]; if(!cb) return;
+  cb.open = true;
+  // NO reset filter aquí: el input puede traer texto residual (al regresar de
+  // [Cambiar] o si el asesor reabre). cbCliActivoFilter es el path canónico.
+  cb.highlighted = -1;
+  cbCliActivoRenderList();
+}
+
+function cbCliActivoClose(){
+  const cb = CB_STATE[CB_CLI_BOX]; if(!cb) return;
+  cb.open = false;
+  const list = _cbList(CB_CLI_BOX); if(list) list.hidden = true;
+}
+
+function cbCliActivoFilter(value){
+  const cb = CB_STATE[CB_CLI_BOX]; if(!cb) return;
+  cb.filter = value; cb.highlighted = -1; cb.open = true;
+  cbCliActivoRenderList();
+}
+
+function cbCliActivoRenderList(){
+  const cb = CB_STATE[CB_CLI_BOX]; const list = _cbList(CB_CLI_BOX);
+  if(!cb || !list) return;
+  const f = normCliente(cb.filter);
+  // Filtrado SOLO contra cliente (decisión explícita: la ciudad se ve en subtext
+  // pero no es parámetro de búsqueda — evita ambigüedad y resultados anchos).
+  let matches, hint = '';
+  if(f){
+    matches = cb.items.filter(c => normCliente(c.cliente).includes(f));
+  } else {
+    // Sin filtro: top CB_CLI_CAP del orden priorizado. Si hay más, hint al fondo.
+    matches = cb.items.slice(0, CB_CLI_CAP);
+    if(cb.items.length > CB_CLI_CAP){
+      hint = `Sigue escribiendo para buscar entre ${cb.items.length.toLocaleString('es-MX')} clientes`;
+    }
+  }
+  cb._lastMatches = matches;
+
+  if(matches.length === 0){
+    list.innerHTML = `<div class="cb-empty">Sin coincidencias. Si es un prospecto nuevo, sigue escribiendo y al confirmar se guardará sin CardCode.</div>`;
+  } else {
+    const opts = matches.map((m, i) => {
+      const hl = i === cb.highlighted ? ' cb-hl' : '';
+      const sub = _cbCliActivoSubtext(m);
+      const subHtml = sub ? `<div class="cb-option-sub">${_cbEsc(sub)}</div>` : '';
+      return `<div class="cb-option${hl}" data-v="${_cbAttr(m.cardCode)}"
+                   onmousedown="event.preventDefault(); cbCliActivoSelect(this.dataset.v)">
+        <div class="cb-option-label">${_cbEsc(m.cliente)}</div>${subHtml}
+      </div>`;
+    }).join('');
+    const hintHtml = hint ? `<div class="cb-empty" style="font-size:11px;opacity:.7">${_cbEsc(hint)}</div>` : '';
+    list.innerHTML = opts + hintHtml;
+  }
+  list.hidden = !cb.open;
+  list.scrollTop = 0;
+  const hlEl = list.querySelector('.cb-hl');
+  if(hlEl) hlEl.scrollIntoView({ block:'nearest' });
+}
+
+function cbCliActivoSelect(cardCode){
+  const cb = CB_STATE[CB_CLI_BOX]; if(!cb) return;
+  const cli = cb.items.find(c => c.cardCode === cardCode);
+  if(!cli) return;
+  const input = _cbInput(CB_CLI_BOX);
+  if(input) input.value = cli.cliente;
+  cbCliActivoClose();
+  cbCommitClienteCheckin({
+    nombre: cli.cliente,
+    cardCode: cli.cardCode,
+    ciudad: cli.ciudad,
+    estatus: cli.estatusComercial,
+    esNuevo: false
+  });
+}
+
+function cbCliActivoBlur(){
+  // Delay corto: tolera variaciones de orden de evento entre browsers móviles.
+  setTimeout(() => {
+    const cb = CB_STATE[CB_CLI_BOX]; if(!cb) return;
+    if(cb.open) cbCliActivoClose();
+    const input = _cbInput(CB_CLI_BOX);
+    const typed = input ? input.value.trim() : '';
+    if(!typed){
+      // Vaciar draft si el asesor borró todo y se salió.
+      STATE.clienteCheckinDraft = null;
+      renderCheckin();
+      return;
+    }
+    // Match exacto normalizado → tratar como selección formal del cliente real.
+    const exact = cb.items.find(c => normCliente(c.cliente) === normCliente(typed));
+    if(exact){
+      if(input) input.value = exact.cliente;
+      cbCommitClienteCheckin({
+        nombre: exact.cliente,
+        cardCode: exact.cardCode,
+        ciudad: exact.ciudad,
+        estatus: exact.estatusComercial,
+        esNuevo: false
+      });
+    } else {
+      // Sin match → prospecto/cliente nuevo. CardCode null; el form mostrará el aviso.
+      cbCommitClienteCheckin({
+        nombre: typed,
+        cardCode: null,
+        ciudad: '',
+        estatus: '',
+        esNuevo: true
+      });
+    }
+  }, 150);
+}
+
+function cbCliActivoKeydown(event){
+  const cb = CB_STATE[CB_CLI_BOX]; if(!cb) return;
+  if(event.key === 'ArrowDown'){
+    event.preventDefault();
+    if(!cb.open){ cbCliActivoOpen(); return; }
+    const m = cb._lastMatches || cb.items;
+    cb.highlighted = Math.min(cb.highlighted + 1, m.length - 1);
+    cbCliActivoRenderList();
+  } else if(event.key === 'ArrowUp'){
+    event.preventDefault();
+    if(!cb.open) return;
+    cb.highlighted = Math.max(cb.highlighted - 1, 0);
+    cbCliActivoRenderList();
+  } else if(event.key === 'Enter'){
+    if(!cb.open) return;
+    event.preventDefault();
+    const m = cb._lastMatches || cb.items;
+    if(cb.highlighted >= 0 && m[cb.highlighted]) cbCliActivoSelect(m[cb.highlighted].cardCode);
+    else if(m.length === 1) cbCliActivoSelect(m[0].cardCode);
+    else { const inp = _cbInput(CB_CLI_BOX); if(inp) inp.blur(); }
+  } else if(event.key === 'Escape'){
+    cbCliActivoClose();
+  }
+}
+
+// Commit del combobox: setea draft, re-renderiza screen-checkin (que actualiza
+// el bloque de confirmación visible bajo el input). NO toca GEO.checkin todavía
+// — eso espera al tap de "Iniciar visita" / "Confirmar cambio".
+function cbCommitClienteCheckin(clienteInfo){
+  STATE.clienteCheckinDraft = clienteInfo;
+  renderCheckin();
+}
 
 // ── Render Home según STATE.modo ─────────────────────────────────────────────
 function renderHome() {
@@ -369,19 +736,11 @@ async function seleccionarModo(modo) {
       renderHome();
       return;
     }
-    // Sin check-in: lanzar prompt directamente, sin pantalla intermedia
-    const nombre = prompt('¿Con qué cliente estás?');
-    if (!nombre || !nombre.trim()) return; // cancelado: queda en selector
-    STATE.modo = 'campo';
-    renderHome(); // estado de carga mientras GPS captura
-    const result = await checkin(nombre.trim());
-    if (!result) {
-      // GPS denegado o falló — regresar al selector
-      STATE.modo = null;
-      renderHome();
-      return;
-    }
-    renderHome(); // re-render con GEO.checkin presente → estado activo
+    // Sin check-in: abrir screen-checkin con autocomplete sobre Clientes Activos.
+    STATE.cambiandoCliente = false;
+    STATE.clienteCheckinDraft = null;
+    mostrarScreen('screen-checkin');
+    renderCheckin();
   }
 }
 
@@ -813,6 +1172,28 @@ function renderForm(){
     ? `<button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>`
     : `<button class="back-btn" onclick="mostrarScreen('screen-home')">← Inicio</button>`;
 
+  // Cliente heredado del check-in (GEO.checkin). El form ya no captura el nombre
+  // del cliente — solo lo muestra como contexto read-only con botón [Cambiar].
+  const checkinInfo = (typeof GEO !== 'undefined' && GEO.checkin) ? GEO.checkin : {};
+  const visitandoSubInfo = checkinInfo.esNuevo
+    ? 'Cliente nuevo · sin CardCode'
+    : [checkinInfo.ciudad, checkinInfo.estatus].filter(Boolean).join(' · ');
+  const visitandoCard = `<div class="card">
+    <div class="card-title-row">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-tertiary);margin-bottom:4px">Visitando</div>
+        <div style="font-size:15px;font-weight:500">${_cbEsc(checkinInfo.cliente || '(sin cliente)')}</div>
+        ${visitandoSubInfo ? `<div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">${_cbEsc(visitandoSubInfo)}</div>` : ''}
+      </div>
+      <button type="button" class="btn-refresh" onclick="abrirCambiarCliente()" title="Cambiar cliente" style="font-size:12px;padding:6px 10px;width:auto">Cambiar</button>
+    </div>
+  </div>`;
+
+  const contactoPrincipalCard = `<div class="card">
+    <div class="card-title">Contacto principal <span class="opt">opc</span></div>
+    <input type="text" id="cliente-contacto" placeholder="Nombre del contacto que atendió">${oppNombreEnCliente}
+  </div>`;
+
   $('screen-form').innerHTML=`
     <header class="top-bar ${t.color}">
       ${backBtn}
@@ -820,17 +1201,8 @@ function renderForm(){
       <div style="width:50px"></div>
     </header>
     <div class="form-body">
-      <div class="card">
-        <div class="card-title">Cliente</div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <div class="type-btn ${STATE.clienteExiste?'sel-blue':''}" style="flex:1" onclick="setClienteExiste(true)">Existente en SAP</div>
-          <div class="type-btn ${!STATE.clienteExiste?'sel-amber':''}" style="flex:1" onclick="setClienteExiste(false)">Cliente nuevo</div>
-        </div>
-        <div class="field-label">Nombre del cliente <span class="req">*</span></div>
-        <input type="text" id="cliente-nombre" placeholder="Buscar o escribir cliente...">
-        <div class="field-label">Contacto principal <span class="opt">opc</span></div>
-        <input type="text" id="cliente-contacto" placeholder="Nombre del contacto">${oppNombreEnCliente}
-      </div>
+      ${visitandoCard}
+      ${contactoPrincipalCard}
       ${contactoHTML}
       <div class="card">
         <div class="card-title">División <span class="req">*</span></div>
@@ -870,8 +1242,6 @@ function selMoneda(v){
 function toggleComp(c){guardarCampos();const i=STATE.competidores.indexOf(c);if(i>-1)STATE.competidores.splice(i,1);else STATE.competidores.push(c);renderForm()}
 function toggleLider(email){guardarCampos();const i=STATE.lideres.indexOf(email);if(i>-1)STATE.lideres.splice(i,1);else STATE.lideres.push(email);renderForm()}
 function toggleContacto(){guardarCampos();STATE.contactoNuevo=!STATE.contactoNuevo;renderForm()}
-function setClienteExiste(val){guardarCampos();STATE.clienteExiste=val;renderForm()}
-
 function selResultadoOpp(resultado){STATE.resultado=resultado;renderForm()}
 function volverSelectorOpp(){guardarCampos();STATE.resultado=null;renderForm()}
 function selRazonPerdida(razon){guardarCampos();STATE.razonPerdida=razon;renderForm()}
@@ -894,11 +1264,14 @@ async function guardar() {
   const esSubflujoOpp = esCierre || esAvance;
   const opSel = STATE.oportunidadSeleccionada;
 
-  // Cliente: sub-flujos leen del commit del combobox; visita/demo del input regular.
+  // Cliente: sub-flujos leen del commit del combobox de Opp; visita/demo del check-in.
   const cliente = esSubflujoOpp
     ? (STATE.clienteCommit?.trim() || '')
-    : (STATE.campos['cliente-nombre']?.trim() || '');
-  if (!cliente) { alert('Falta el nombre del cliente'); return; }
+    : (GEO.checkin?.cliente || '');
+  if (!cliente) {
+    alert(esSubflujoOpp ? 'Falta el nombre del cliente' : 'No hay un cliente activo. Haz check-in primero.');
+    return;
+  }
 
   // Validaciones por caso
   if (esSubflujoOpp) {
@@ -939,13 +1312,19 @@ async function guardar() {
   // en fallback o en visita/demo va el texto libre que tipeó el asesor.
   const oppNombreFinal = (esSubflujoOpp && opSel) ? '' : (STATE.campos['opp-nombre'] || '');
 
+  // CardCode canónico: viene del check-in para visita/demo (cliente seleccionado
+  // del autocomplete sobre Clientes Activos). null en fallback de texto libre y
+  // en sub-flujos de oportunidad (estos identifican por OpportunidadID).
+  const cardCodeFinal = esSubflujoOpp ? null : (GEO.checkin?.cardCode || null);
+
   const registro = {
     tipo: STATE.tipo,
     modo: STATE.modo || 'campo',
     fecha: new Date().toISOString(),
     cliente: clienteFinal,
+    cardCode: cardCodeFinal,
     clienteContacto: esSubflujoOpp ? '' : STATE.campos['cliente-contacto'],
-    clienteNuevo: esSubflujoOpp ? false : !STATE.clienteExiste,
+    clienteNuevo: esSubflujoOpp ? false : !!(GEO.checkin?.esNuevo),
     division: esSubflujoOpp ? '' : STATE.division,
     // Avanzó con opp seleccionada: heredar marca de la opp (informativo, SAP ya la tiene)
     marca: esCierre ? '' : (esAvance ? (opSel ? opSel.Marca : '') : STATE.marca),
@@ -1016,12 +1395,14 @@ async function guardar() {
 }
 
 // ── Modal Check-in ───────────────────────────────────────────────────────────
+// Wrapper para botones legacy (actualizarBotonCheckin lo llama cuando no hay
+// check-in activo). Misma transición que seleccionarModo('campo').
 
 function mostrarModalCheckin() {
-  const nombre = prompt('¿Con qué cliente estás?');
-  if (nombre && nombre.trim()) {
-    checkin(nombre.trim());
-  }
+  STATE.cambiandoCliente = false;
+  STATE.clienteCheckinDraft = null;
+  mostrarScreen('screen-checkin');
+  renderCheckin();
 }
 
 // ── Exponer funciones globales ───────────────────────────────────────────────
@@ -1035,7 +1416,6 @@ window.selMoneda            = selMoneda;
 window.toggleComp           = toggleComp;
 window.toggleLider          = toggleLider;
 window.toggleContacto       = toggleContacto;
-window.setClienteExiste     = setClienteExiste;
 window.filtrarLideres       = filtrarLideres;
 window.guardar              = guardar;
 window.mostrarModalCheckin  = mostrarModalCheckin;
@@ -1053,6 +1433,16 @@ window.cbBlur               = cbBlur;
 window.cbKeydown            = cbKeydown;
 window.refrescarOportunidades = refrescarOportunidades;
 window.onOportunidadesCargadas = onOportunidadesCargadas;
+window.cbCliActivoOpen      = cbCliActivoOpen;
+window.cbCliActivoClose     = cbCliActivoClose;
+window.cbCliActivoFilter    = cbCliActivoFilter;
+window.cbCliActivoSelect    = cbCliActivoSelect;
+window.cbCliActivoBlur      = cbCliActivoBlur;
+window.cbCliActivoKeydown   = cbCliActivoKeydown;
+window.confirmarCheckin     = confirmarCheckin;
+window.cancelarCheckin      = cancelarCheckin;
+window.abrirCambiarCliente  = abrirCambiarCliente;
+window.onClientesActivosCargados = onClientesActivosCargados;
 
 window.addEventListener('DOMContentLoaded',()=>{
   const f=$('fecha-hoy');if(f)f.textContent=fechaHoy();

@@ -61,6 +61,8 @@ Cuando SAP esté disponible, la función `cargarOportunidadesAsesor()` en `sap.j
 
 Mismo principio aplica para otras lecturas futuras (clientes, productos, ventas, etc.): la app define funciones de lectura abstraídas; las implementaciones internas cambian de xlsx a SAP cuando llegue el momento.
 
+**Lectura de Clientes Activos vía Graph API:** agregada función `cargarClientesActivos` en `sap.js`. Cuando SAP B1 Service Layer esté disponible, esta función se reescribe internamente para leer del endpoint `BusinessPartners` filtrado por `CardType='C'` `validFor='Y'`. La firma externa de la función queda igual.
+
 El campo `OpportunidadID` guardado en la SharePoint List `Visitas Field App` es la pieza clave que permite a Power Automate (hoy) o a la app directamente (cuando SAP conecte) actualizar la oportunidad correcta en SAP B1 cuando se sincronice un cierre o avance de etapa.
 
 ---
@@ -76,6 +78,7 @@ El campo `OpportunidadID` guardado en la SharePoint List `Visitas Field App` es 
 - **Etapas reference `DASHBOARD_CONFIG.etapas`.** Six canonical stages with % and colors. Don't hardcode % or colors elsewhere.
 - **Check-in is mandatory** in the Field App before any of the four registro buttons enable. Don't add a registro flow that bypasses this — it breaks the GPS-per-activity guarantee.
 - **mapaGrupos and visible divisions must stay in sync.** If you add a SAP grupo to `mapaGrupos`, make sure the resulting división is one of: Trazabilidad, Visión, Robótica, Suministros, Servicios.
+- **CardCode es identidad canónica del cliente, Title es legibilidad humana.** En la SharePoint List `Visitas Field App`, el campo `CardCode` (columna agregada en mayo 2026) es la llave que permite cruzar registros contra SAP B1 (entidad `OCRD`). El campo `Title` guarda el nombre del cliente como string para legibilidad en vistas de SharePoint. **Cumplen funciones distintas — no eliminar `CardCode` pensando que `Title` es suficiente.** `CardCode` queda vacío (`null`) cuando el asesor cae al fallback de texto libre (prospecto/cliente sin entrada en `Clientes Activos.xlsx`); ese vacío es señal medible de captura faltante en SAP, no un bug.
 
 ---
 
@@ -160,6 +163,12 @@ La app obtiene el email del usuario logueado vía MSAL (`account.username`, equi
 
 Si el usuario logueado no está en el mapeo, `STATE.asesorSAP` queda `null` y los tres sub-flujos de Actualizar Oportunidad (Avanzó / Se ganó / Se perdió) muestran un mensaje de "función en piloto" dentro del form. Los flujos de Nueva Visita y Demo Realizada siguen funcionando normalmente para todos los usuarios.
 
+### Cliente vs Lead/Prospecto
+
+Vinssa distingue entre clientes con CardCode formal en SAP (entidad `OCRD`) y leads/prospectos aún no formalizados. En SAP, los leads se registran como entidades aparte hasta que generan primer pedido y se les crea CardCode. Hoy la app solo soporta selección de Clientes con CardCode existente (lectura de `Clientes Activos.xlsx`). El flujo de Lead (selección o creación) está pendiente hasta que SAP B1 Service Layer esté disponible vía Vertrou — entonces los leads se podrán crear directamente en SAP, evitando el paso manual de captura externa.
+
+Mientras tanto, cuando un asesor visita un prospecto que no aparece en `Clientes Activos.xlsx`, el combobox del check-in cae a fallback de texto libre: el nombre se guarda en `Title` pero `CardCode` queda vacío. Esto es señal medible — ver pending work sobre medir uso del fallback.
+
 ### UX del combobox de cliente/oportunidad (Actualizar Oportunidad)
 
 Decisiones que se tomaron durante el piloto, no obvias del código:
@@ -216,7 +225,9 @@ Don't propose work already in motion or already decided against:
 - **Búsqueda dentro del dropdown de oportunidades**: actualmente es dropdown plano. Cuando un asesor con muchas oportunidades reporte fricción al hacer scroll, agregar un campo de filtro por nombre/marca arriba del dropdown.
 - **Flujo "actuar como asesor" para directores y gerentes**: hoy la app está diseñada para que cada usuario MSAL mapee 1:1 a un asesor SAP. Los directores y gerentes pueden necesitar cerrar oportunidades en nombre de un asesor (cuando él delega, está fuera, o renuncia). Diseño futuro: dropdown adicional "Actuando como: [asesor]" visible solo para roles Director/Gerente. El cierre queda auditado como "cerrado por X en nombre de Y".
 - **Reasignación de oportunidades de asesores que salen**: cuando un asesor deja Vinssa, sus oportunidades activas en SAP quedan huérfanas si no se reasignan. Hoy la reasignación se hace manualmente en SAP. Futuro: vista para Gerentes que permita reasignar oportunidades de un asesor saliente a otro activo, con un solo flujo. Esto cierra el ciclo de gestión de carga por asesor.
-- **Medir uso del fallback de texto libre**: cada vez que un asesor cierra/avanza una oportunidad usando el campo de texto libre (porque no había oportunidad en SAP), eso es señal de que la disciplina de captura de oportunidades en SAP necesita atención. Agregar reporte simple que cuente cuántos registros pasaron por fallback (`OpportunidadID` vacío y `OppNombre` con texto) vs cuántos por dropdown (`OpportunidadID` poblado), segmentado por asesor y por mes. Si el ratio de fallback es alto (>20%), abrir conversación con los gerentes sobre captura en SAP.
+- **Medir uso del fallback de texto libre**: cada vez que un asesor cierra/avanza una oportunidad usando el campo de texto libre (porque no había oportunidad en SAP), eso es señal de que la disciplina de captura de oportunidades en SAP necesita atención. Agregar reporte simple que cuente cuántos registros pasaron por fallback (`OpportunidadID` vacío y `OppNombre` con texto) vs cuántos por dropdown (`OpportunidadID` poblado), segmentado por asesor y por mes. Si el ratio de fallback es alto (>20%), abrir conversación con los gerentes sobre captura en SAP. **Aplica el mismo principio al fallback de cliente en check-in**: registros con `CardCode` vacío indican que el asesor visitó un cliente/prospecto no presente en `Clientes Activos.xlsx`.
+- **Flujo de Lead**: agregar capacidad de seleccionar/crear Leads en SAP cuando Vertrou resuelva el SSL del Service Layer. Hoy si un asesor visita un prospecto sin CardCode, cae a fallback de texto libre (CardCode = null en SharePoint). Cuando SAP conecte, este flujo se reemplaza por selección de Leads (entidad OCRD con `CardType='L'`) y opción de crear nuevo Lead directamente.
+- **Re-export periódico de `Clientes Activos.xlsx`**: el archivo refleja un snapshot de SAP en el momento del export. Definir frecuencia de re-export (semanal, mensual) y/o automatizar con Power Automate cuando SAP esté disponible.
 
 ---
 

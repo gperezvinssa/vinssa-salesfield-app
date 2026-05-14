@@ -188,6 +188,10 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
 
   const fields = {
     Title: registro.cliente || '',
+    // Identidad canónica del cliente para cruce con SAP (entidad OCRD).
+    // Vacío cuando es prospecto/cliente nuevo capturado por texto libre — esos
+    // casos se cuentan aparte para medir disciplina de captura en SAP.
+    CardCode: registro.cardCode || '',
     Asesor: registro.asesor || '',
     Tipo: registro.tipo || '',
     ModoRegistro: registro.modo || 'campo',
@@ -401,6 +405,96 @@ async function cargarOportunidadesAsesor() {
     return oportunidades;
   } catch(e) {
     console.warn('Error cargando oportunidades:', e.message);
+    return [];
+  }
+}
+
+// ── Lectura de Clientes Activos.xlsx vía Graph Workbook API ──────────────────
+// Devuelve array crudo de clientes; sap.js NO ordena por prioridad de asesor —
+// eso es responsabilidad de app.js que conoce STATE.asesorSAP y el UX target.
+// Reutiliza OPS_CACHE.driveId del cargador de oportunidades (mismo sitio).
+//
+// Cuando SAP B1 Service Layer esté disponible vía Vertrou, esta función se
+// reescribe internamente para llamar a `BusinessPartners?$filter=CardType eq
+// 'cCustomer' and validFor eq 'tYES'` y mapear los campos. La firma externa
+// queda igual: array de objetos con las mismas keys.
+async function cargarClientesActivos() {
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (!accounts.length) return [];
+    const tokenRes = await msalInstance.acquireTokenSilent({
+      scopes: ['Sites.ReadWrite.All'],
+      account: accounts[0]
+    });
+    const token = tokenRes.accessToken;
+
+    if (!OPS_CACHE.driveId) {
+      const drivesRes = await fetch(
+        'https://graph.microsoft.com/v1.0/sites/versatilidadsaltillo.sharepoint.com:/sites/VINSSAAutomation:/drives',
+        { headers: { Authorization: 'Bearer ' + token } }
+      );
+      const drives = await drivesRes.json();
+      if (!drives.value || !drives.value.length) {
+        console.warn('No se encontró drive de SharePoint');
+        return [];
+      }
+      OPS_CACHE.driveId = drives.value[0].id;
+    }
+    const driveId = OPS_CACHE.driveId;
+
+    const itemsRes = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/root/children`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    const items = await itemsRes.json();
+    const file = (items.value || []).find(f => f.name === 'Clientes Activos.xlsx');
+    if (!file) {
+      console.warn('Clientes Activos.xlsx no encontrado en SharePoint');
+      return [];
+    }
+
+    let res = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${file.id}/workbook/worksheets/Sheet1/usedRange`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) {
+      res = await fetch(
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${file.id}/workbook/worksheets/Hoja1/usedRange`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) {
+        console.warn('No se pudo leer Clientes Activos.xlsx');
+        return [];
+      }
+    }
+    const data = await res.json();
+    const values = data.values;
+    if (!values || values.length < 2) return [];
+
+    const headers = values[0].map(h => String(h).trim());
+    const rows = values.slice(1)
+      .filter(row => row.some(cell => cell !== '' && cell !== null))
+      .map(row => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = row[i] ?? '');
+        return obj;
+      });
+
+    const clientes = rows
+      .filter(r => r.CardCode && r.Cliente)
+      .map(r => ({
+        cardCode:        String(r.CardCode || '').trim(),
+        cliente:         String(r.Cliente || '').trim(),
+        asesor:          String(r.Asesor || '').trim(),
+        ciudad:          String(r.Ciudad || '').trim(),
+        estado:          String(r.Estado || '').trim(),
+        estatusComercial: String(r.EstatusComercial || '').trim()
+      }));
+
+    console.log(`Clientes activos cargados: ${clientes.length}`);
+    return clientes;
+  } catch(e) {
+    console.warn('Error cargando clientes activos:', e.message);
     return [];
   }
 }
