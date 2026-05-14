@@ -114,7 +114,9 @@ function navSwitch(screenId, btn) {
   // Mostrar la seleccionada
   const target = document.getElementById(screenId);
   if (target) {
-    target.style.display = 'block';
+    // 'flex' (no 'block') para preservar el layout flex column de .screen.active
+    // y permitir que .form-body con flex:1 + overflow-y:auto scrollee internamente.
+    target.style.display = 'flex';
     target.classList.add('active');
   }
   // Si es dashboard y aún no se ha cargado, inicializar

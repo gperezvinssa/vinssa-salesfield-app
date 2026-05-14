@@ -13,7 +13,10 @@ function mostrarScreen(id){
   const s=$(id);
   if(s){
     s.classList.add('active');
-    s.style.display='block';
+    // 'flex' (no 'block') para que coincida con .screen.active { display: flex }
+    // del CSS — necesario para que .form-body con flex:1 + overflow-y:auto
+    // scrollee internamente en lugar de empujar el documento.
+    s.style.display='flex';
     window.scrollTo(0,0);
   }
 }
