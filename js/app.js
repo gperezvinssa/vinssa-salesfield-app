@@ -265,6 +265,16 @@ function onOportunidadesCargadas(){
   }
 }
 
+// Click fuera de cualquier combobox abierto → cerrarlo. Necesario en mobile
+// donde el blur nativo del input no siempre se dispara al tapear elementos
+// no interactivos (cards, fondo, etc.) y la lista se queda abierta.
+document.addEventListener('click', (e) => {
+  if(e.target.closest && e.target.closest('.combobox')) return;
+  Object.keys(CB_STATE).forEach(boxId => {
+    if(CB_STATE[boxId] && CB_STATE[boxId].open) cbClose(boxId);
+  });
+});
+
 // ── Render Home según STATE.modo ─────────────────────────────────────────────
 function renderHome() {
   const body = $('home-body');
