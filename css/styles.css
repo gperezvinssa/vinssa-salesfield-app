@@ -347,9 +347,11 @@ textarea { min-height: 70px; resize: none; }
   position: relative;
 }
 .combobox input[type="text"] {
-  /* Hereda padding/border/font del input genérico; solo asegurar que el margen
-     bottom no acumule con la lista flotante. */
   margin-bottom: 0;
+  /* iOS Safari hace zoom automático al focusear un input con font-size < 16px.
+     16px lo previene y mantiene el viewport quieto. Los otros inputs del form
+     quedan en 13px (CSS global) — solo el combobox sube. */
+  font-size: 16px;
 }
 .combobox-list {
   position: absolute;
@@ -360,10 +362,9 @@ textarea { min-height: 70px; resize: none; }
   background: var(--color-background-primary, #FFFFFF);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-sm);
-  /* Altura fija para que la lista nunca exceda el área visible debajo del input
-     y no fuerce scroll del documento. Con 280px caben ~6 opciones de 1 línea o
-     ~4-5 de 2 líneas. Scroll interno cuando hay más opciones. */
-  max-height: 280px;
+  /* Altura fija para que la lista no exceda el área visible y no fuerce scroll
+     del documento. Con 320px caben ~7 opciones de 1 línea / ~5 de 2. */
+  max-height: 320px;
   overflow-y: auto;
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   margin-bottom: 8px;
