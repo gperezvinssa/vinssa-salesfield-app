@@ -28,6 +28,22 @@ async function iniciarApp(account) {
   CONFIG.usuario.email     = email;
   CONFIG.usuario.iniciales = nombre.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase();
 
+  // Resolver asesor SAP del usuario logueado para piloto de Actualizar Oportunidad.
+  // Si no está en el mapeo, queda null y los 3 sub-flujos muestran mensaje de piloto.
+  if (typeof STATE !== 'undefined') {
+    const emailKey = String(email || '').toLowerCase();
+    STATE.asesorSAP = (typeof EMAIL_A_ASESOR !== 'undefined' && EMAIL_A_ASESOR[emailKey]) || null;
+    STATE.oportunidades = [];
+    // Carga async — no bloquea la entrada a Home. Cuando termina,
+    // si el form Avanzó/Ganada/Perdida ya está abierto, app.js refresca el dropdown.
+    if (STATE.asesorSAP) {
+      cargarOportunidadesAsesor().then(ops => {
+        STATE.oportunidades = ops;
+        if (typeof onOportunidadesCargadas === 'function') onOportunidadesCargadas();
+      });
+    }
+  }
+
   document.getElementById('screen-login').style.display = 'none';
   document.getElementById('app').style.display = 'block';
 

@@ -58,3 +58,16 @@ const CONFIG = {
 
   timezone: "America/Monterrey"
 };
+
+// ── Mapeo MSAL email → nombre de asesor en SAP ──────────────────────────────
+// El email del usuario logueado (account.username de MSAL, lowercase) se mapea
+// al nombre de asesor SAP exacto (OSLP.SlpName, típicamente MAYÚSCULAS sin acentos).
+// Este nombre se usa para filtrar Oportunidades.xlsx por la columna Asesor.
+// Cuando un asesor nuevo se suma al piloto, agregar entrada aquí.
+const EMAIL_A_ASESOR = {
+  'kportillo@vinssa.com': 'KIMBERLY PORTILLO',
+  // OVERRIDE TEMPORAL: permite al Director (Gerardo) probar el flujo end-to-end
+  // durante la fase de pulido del piloto sin requerir login con cuenta de asesor.
+  // ELIMINAR esta entrada antes de expandir el piloto a más asesores.
+  'gperez@vinssa.com': 'KIMBERLY PORTILLO'
+};

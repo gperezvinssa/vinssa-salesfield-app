@@ -10,7 +10,11 @@ const STATE={
   razonPerdida:null,                   // string elegido cuando resultado='perdida'
   lideres:[],competidores:[],contactoNuevo:false,moneda:'MXP',
   clienteExiste:true,
-  campos:{}
+  campos:{},
+  // Piloto de Actualizar Oportunidad: dropdown de clientes y oportunidades.
+  asesorSAP:null,                      // se resuelve en auth.js desde EMAIL_A_ASESOR
+  oportunidades:[],                    // poblado async tras login
+  oportunidadSeleccionada:null         // objeto opp completo cuando el asesor elige una
 };
 
 function guardarCampos(){
@@ -30,7 +34,72 @@ function irA(screenId,tipo){
   STATE.marca=null;STATE.etapa=null;STATE.lideres=[];
   STATE.competidores=[];STATE.contactoNuevo=false;STATE.moneda='MXP';STATE.campos={};
   STATE.resultado=null;STATE.razonPerdida=null;
+  STATE.oportunidadSeleccionada=null;
   renderForm();mostrarScreen(screenId);
+}
+
+// ── Helpers piloto de Actualizar Oportunidad ─────────────────────────────────
+// Match exacto normalizado: uppercase + NFD strip acentos + trim.
+function normCliente(str){
+  return String(str||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+}
+
+// Clientes únicos en STATE.oportunidades, ordenados alfabéticamente.
+function clientesUnicos(){
+  const set=new Set();
+  STATE.oportunidades.forEach(o=>{ if(o.Cliente) set.add(o.Cliente); });
+  return Array.from(set).sort();
+}
+
+// Oportunidades del cliente actual (match exacto normalizado).
+function opsDelCliente(cliente){
+  if(!cliente) return [];
+  const norm=normCliente(cliente);
+  return STATE.oportunidades.filter(o=>normCliente(o.Cliente)===norm);
+}
+
+// El asesor eligió una oportunidad del dropdown → guardar y re-render.
+// Limpiar monto-final para que el auto-llenado tome el MontoEstimado de la nueva opp.
+function selOportunidad(numOpp){
+  guardarCampos();
+  STATE.oportunidadSeleccionada=STATE.oportunidades.find(o=>String(o.NumOportunidad)===String(numOpp))||null;
+  delete STATE.campos['monto-final'];
+  renderForm();
+}
+
+// El asesor cambió el cliente en el dropdown autocompletable.
+// Resetea la opp seleccionada (puede no aplicar al nuevo cliente).
+// Si el nuevo cliente tiene exactamente UNA opp, la pre-selecciona.
+// Limpia monto-final para que el auto-llenado lo reponga desde la nueva opp.
+function onClienteCambio(valor){
+  guardarCampos();
+  STATE.oportunidadSeleccionada=null;
+  const ops=opsDelCliente(valor);
+  if(ops.length===1) STATE.oportunidadSeleccionada=ops[0];
+  delete STATE.campos['monto-final'];
+  renderForm();
+}
+
+// Botón refresh inline en el form: vuelve a cargar Oportunidades.xlsx.
+async function refrescarOportunidades(){
+  const btn=$('btn-refresh-opps');
+  if(btn){ btn.disabled=true; btn.textContent='Actualizando...'; }
+  guardarCampos();
+  STATE.oportunidades=await cargarOportunidadesAsesor();
+  // Si el cliente actual ya no tiene una opp pre-seleccionada válida, limpia.
+  if(STATE.oportunidadSeleccionada){
+    const sigue=STATE.oportunidades.find(o=>String(o.NumOportunidad)===String(STATE.oportunidadSeleccionada.NumOportunidad));
+    STATE.oportunidadSeleccionada=sigue||null;
+  }
+  renderForm();
+}
+
+// Hook llamado por auth.js cuando termina la carga async inicial.
+// Si el form de Actualizar Oportunidad ya está abierto, re-render para poblar dropdown.
+function onOportunidadesCargadas(){
+  if(STATE.tipo==='oportunidad' && STATE.resultado!==null){
+    renderForm();
+  }
 }
 
 // ── Render Home según STATE.modo ─────────────────────────────────────────────
@@ -170,6 +239,75 @@ const RAZONES_PERDIDA = [
   'Otro'
 ];
 
+// Mensaje cuando el usuario no es asesor en el piloto (asesorSAP null).
+function renderMensajePiloto(){
+  return `<div class="card msg-piloto">
+    <div style="font-size:14px;font-weight:500;margin-bottom:6px">Función en piloto</div>
+    <div style="font-size:13px;color:var(--color-text-secondary);line-height:1.5">
+      Esta función está actualmente en piloto y disponible solo para asesores asignados.
+      Si crees que esto es un error, contacta a Gerardo Pérez (gperez@vinssa.com).
+    </div>
+  </div>`;
+}
+
+// Bloque compartido: card Cliente (input + datalist autocompletable) +
+// card Oportunidad (dropdown con opps del cliente, o fallback de texto libre).
+// Devuelve { html, esFallback, opSel } para que cada caso decida qué hacer después.
+function renderBloqueClienteYOpp(){
+  const clientes=clientesUnicos();
+  const clienteActual=STATE.campos['cliente-nombre']||'';
+  const ops=opsDelCliente(clienteActual);
+  const opSel=STATE.oportunidadSeleccionada;
+  const aunCargando=STATE.oportunidades.length===0;
+  const esFallback=clienteActual.trim().length>0 && ops.length===0;
+
+  const datalistOpts=clientes.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
+  const refreshBtn=`<button type="button" id="btn-refresh-opps" class="btn-refresh" onclick="refrescarOportunidades()" title="Recargar oportunidades de SAP">🔄</button>`;
+
+  const clienteCard=`<div class="card">
+    <div class="card-title-row">
+      <div class="card-title">Cliente <span class="req">*</span></div>
+      ${refreshBtn}
+    </div>
+    <input type="text" id="cliente-nombre" list="clientes-list"
+           placeholder="Empieza a escribir el nombre del cliente..."
+           oninput="onClienteCambio(this.value)" autocomplete="off">
+    <datalist id="clientes-list">${datalistOpts}</datalist>
+    ${aunCargando?'<div class="hint-piloto">Cargando tus oportunidades de SAP...</div>':''}
+  </div>`;
+
+  let oppCard='';
+  if(clienteActual && ops.length>0){
+    const opcionesHTML=ops.map(o=>{
+      const monto=o.MontoEstimado?`$${o.MontoEstimado.toLocaleString('es-MX')} MXP`:'sin monto';
+      const sel=opSel && String(opSel.NumOportunidad)===String(o.NumOportunidad)?'selected':'';
+      const desc=String(o.Descripcion||'(sin descripción)').replace(/</g,'&lt;');
+      return `<option value="${o.NumOportunidad}" ${sel}>${desc} · ${o.Marca} · ${monto}</option>`;
+    }).join('');
+    const placeholderOpt=ops.length>1 && !opSel?'<option value="">— Elige una —</option>':'';
+    const banner=opSel?`<div class="opp-banner">
+      <strong>${String(opSel.Descripcion||'(sin descripción)').replace(/</g,'&lt;')}</strong>
+      · ${opSel.Marca||'(sin marca)'}
+      · originalmente $${(opSel.MontoEstimado||0).toLocaleString('es-MX')} MXP
+      · etapa actual: ${opSel.Etapa||'(sin etapa)'}
+    </div>`:'';
+    oppCard=`<div class="card">
+      <div class="card-title">Selecciona la oportunidad <span class="req">*</span></div>
+      <select id="opp-select" onchange="selOportunidad(this.value)">${placeholderOpt}${opcionesHTML}</select>
+      ${banner}
+    </div>`;
+  } else if(clienteActual){
+    oppCard=`<div class="card">
+      <div class="card-title">Oportunidad</div>
+      <div class="hint-piloto">No hay oportunidades activas con este cliente en SAP. Captura el nombre manualmente.</div>
+      <div class="field-label">Nombre de la oportunidad <span class="req">*</span></div>
+      <input type="text" id="opp-nombre" placeholder="Describe la oportunidad...">
+    </div>`;
+  }
+
+  return { html: clienteCard+oppCard, esFallback, opSel };
+}
+
 function renderForm(){
   // CASO 1: Sub-selector de tipo de actualización (oportunidad sin resultado elegido)
   if (STATE.tipo === 'oportunidad' && STATE.resultado === null) {
@@ -209,24 +347,28 @@ function renderForm(){
   // CASO 2: Form Ganada
   if (STATE.tipo === 'oportunidad' && STATE.resultado === 'ganada') {
     const hoyISO = new Date().toISOString().split('T')[0];
-    $('screen-form').innerHTML = `
-      <header class="top-bar green">
-        <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
-        <div style="color:white;font-size:14px;font-weight:500">Oportunidad ganada</div>
-        <div style="width:50px"></div>
-      </header>
-      <div class="form-body">
-        <div class="card">
-          <div class="card-title">Cliente</div>
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <div class="type-btn ${STATE.clienteExiste?'sel-blue':''}" style="flex:1" onclick="setClienteExiste(true)">Existente en SAP</div>
-            <div class="type-btn ${!STATE.clienteExiste?'sel-amber':''}" style="flex:1" onclick="setClienteExiste(false)">Cliente nuevo</div>
-          </div>
-          <div class="field-label">Nombre del cliente <span class="req">*</span></div>
-          <input type="text" id="cliente-nombre" placeholder="Buscar o escribir cliente...">
-          <div class="field-label">Nombre de la oportunidad <span class="opt">opc</span></div>
-          <input type="text" id="opp-nombre" placeholder="Si lo recuerdas, ayuda a identificar la oportunidad">
-        </div>
+    // Bloqueo piloto: usuario logueado no está mapeado a ningún asesor SAP.
+    if (!STATE.asesorSAP) {
+      $('screen-form').innerHTML = `
+        <header class="top-bar green">
+          <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
+          <div style="color:white;font-size:14px;font-weight:500">Oportunidad ganada</div>
+          <div style="width:50px"></div>
+        </header>
+        <div class="form-body">${renderMensajePiloto()}</div>`;
+      return;
+    }
+    const bloque = renderBloqueClienteYOpp();
+    const opSel = bloque.opSel;
+    // Auto-llenado: si hay opp seleccionada y el usuario aún no editó el monto,
+    // pre-cargar MontoEstimado de la opp. STATE.campos['monto-final'] === undefined
+    // = nunca tocado; '' = el usuario lo borró a propósito (respetar).
+    const montoPre = STATE.campos['monto-final'] !== undefined
+      ? STATE.campos['monto-final']
+      : (opSel ? String(opSel.MontoEstimado || '') : '');
+    // Solo mostrar la sección de cierre si ya hay opp seleccionada o si está en fallback con cliente escrito.
+    const yaPuedeCerrar = !!opSel || bloque.esFallback;
+    const cierreCard = yaPuedeCerrar ? `
         <div class="card">
           <div class="card-title">Cierre ganado</div>
           <div class="field-row" style="align-items:end">
@@ -237,7 +379,7 @@ function renderForm(){
                   <option value="MXP" ${STATE.moneda==='MXP'?'selected':''}>MXP</option>
                   <option value="USD" ${STATE.moneda==='USD'?'selected':''}>USD</option>
                 </select>
-                <input type="number" id="monto-final" placeholder="0" style="flex:1">
+                <input type="number" id="monto-final" placeholder="0" style="flex:1" value="${montoPre}">
               </div>
             </div>
             <div>
@@ -250,14 +392,41 @@ function renderForm(){
           <div class="card-title">Notas de cierre <span class="opt">opc</span></div>
           <textarea id="notas" placeholder="Detalles del cierre, condiciones acordadas..."></textarea>
         </div>
-        <button class="save-btn green" onclick="guardar()">Guardar cierre ganado</button>
+        <button class="save-btn green" onclick="guardar()">Guardar cierre ganado</button>` : '';
+    $('screen-form').innerHTML = `
+      <header class="top-bar green">
+        <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
+        <div style="color:white;font-size:14px;font-weight:500">Oportunidad ganada</div>
+        <div style="width:50px"></div>
+      </header>
+      <div class="form-body">
+        ${bloque.html}
+        ${cierreCard}
       </div>`;
+    // Excluir monto-final de restaurarCampos en este render — ya lo pusimos
+    // explícitamente vía value="" para que respete el auto-llenado.
+    const guardado = STATE.campos['monto-final'];
+    delete STATE.campos['monto-final'];
     restaurarCampos();
+    if (guardado !== undefined) STATE.campos['monto-final'] = guardado;
     return;
   }
 
   // CASO 3: Form Perdida
   if (STATE.tipo === 'oportunidad' && STATE.resultado === 'perdida') {
+    if (!STATE.asesorSAP) {
+      $('screen-form').innerHTML = `
+        <header class="top-bar red">
+          <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
+          <div style="color:white;font-size:14px;font-weight:500">Oportunidad perdida</div>
+          <div style="width:50px"></div>
+        </header>
+        <div class="form-body">${renderMensajePiloto()}</div>`;
+      return;
+    }
+    const bloque = renderBloqueClienteYOpp();
+    const opSel = bloque.opSel;
+    const yaPuedeCerrar = !!opSel || bloque.esFallback;
     const razonesHTML = RAZONES_PERDIDA.map(r =>
       `<div class="stage-item ${STATE.razonPerdida===r?'sel':''}" onclick="selRazonPerdida('${r.replace(/'/g,"\\'")}')">${r}</div>`
     ).join('');
@@ -265,24 +434,7 @@ function renderForm(){
       <div class="field-label" style="margin-top:10px">Detalle <span class="opt">opc</span></div>
       <textarea id="razon-perdida-detalle" placeholder="Especifica la razón (recomendado para análisis posterior)"></textarea>
     ` : '';
-    $('screen-form').innerHTML = `
-      <header class="top-bar red">
-        <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
-        <div style="color:white;font-size:14px;font-weight:500">Oportunidad perdida</div>
-        <div style="width:50px"></div>
-      </header>
-      <div class="form-body">
-        <div class="card">
-          <div class="card-title">Cliente</div>
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <div class="type-btn ${STATE.clienteExiste?'sel-blue':''}" style="flex:1" onclick="setClienteExiste(true)">Existente en SAP</div>
-            <div class="type-btn ${!STATE.clienteExiste?'sel-amber':''}" style="flex:1" onclick="setClienteExiste(false)">Cliente nuevo</div>
-          </div>
-          <div class="field-label">Nombre del cliente <span class="req">*</span></div>
-          <input type="text" id="cliente-nombre" placeholder="Buscar o escribir cliente...">
-          <div class="field-label">Nombre de la oportunidad <span class="opt">opc</span></div>
-          <input type="text" id="opp-nombre" placeholder="Si lo recuerdas, ayuda a identificar la oportunidad">
-        </div>
+    const cierreCard = yaPuedeCerrar ? `
         <div class="card">
           <div class="card-title">Razón de pérdida <span class="req">*</span></div>
           <div class="stage-grid">${razonesHTML}</div>
@@ -292,17 +444,67 @@ function renderForm(){
           <div class="card-title">Notas de cierre <span class="opt">opc</span></div>
           <textarea id="notas" placeholder="Contexto general (opcional)..."></textarea>
         </div>
-        <button class="save-btn red" onclick="guardar()">Guardar cierre perdido</button>
+        <button class="save-btn red" onclick="guardar()">Guardar cierre perdido</button>` : '';
+    $('screen-form').innerHTML = `
+      <header class="top-bar red">
+        <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
+        <div style="color:white;font-size:14px;font-weight:500">Oportunidad perdida</div>
+        <div style="width:50px"></div>
+      </header>
+      <div class="form-body">
+        ${bloque.html}
+        ${cierreCard}
       </div>`;
     restaurarCampos();
     return;
   }
 
-  // CASO 4 (default): Avance, visita, demo. Para Avance, header back va al
-  // sub-selector y opp-nombre sube al card Cliente. Para visita/demo, igual a hoy.
+  // CASO 4: Form Avanzó de etapa
+  if (STATE.tipo === 'oportunidad' && STATE.resultado === 'avance') {
+    if (!STATE.asesorSAP) {
+      $('screen-form').innerHTML = `
+        <header class="top-bar blue">
+          <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
+          <div style="color:white;font-size:14px;font-weight:500">Avanzó de etapa</div>
+          <div style="width:50px"></div>
+        </header>
+        <div class="form-body">${renderMensajePiloto()}</div>`;
+      return;
+    }
+    const bloque = renderBloqueClienteYOpp();
+    const opSel = bloque.opSel;
+    const yaPuedeAvanzar = !!opSel || bloque.esFallback;
+    const etapasHTML = CONFIG.etapas.map(e =>
+      `<div class="stage-item ${STATE.etapa===e.id?'sel':''}" onclick="selEtapa('${e.id}')">${e.label} <span style="opacity:.5;font-size:11px">${e.pct}%</span></div>`
+    ).join('');
+    const avanceCard = yaPuedeAvanzar ? `
+        <div class="card">
+          <div class="card-title">Nueva etapa <span class="req">*</span></div>
+          <div class="stage-grid">${etapasHTML}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Notas del avance <span class="opt">opc</span></div>
+          <textarea id="notas" placeholder="Qué pasó en esta etapa, siguientes pasos..."></textarea>
+        </div>
+        <button class="save-btn blue" onclick="guardar()">Guardar avance de etapa</button>` : '';
+    $('screen-form').innerHTML = `
+      <header class="top-bar blue">
+        <button class="back-btn" onclick="volverSelectorOpp()">← Atrás</button>
+        <div style="color:white;font-size:14px;font-weight:500">Avanzó de etapa</div>
+        <div style="width:50px"></div>
+      </header>
+      <div class="form-body">
+        ${bloque.html}
+        ${avanceCard}
+      </div>`;
+    restaurarCampos();
+    return;
+  }
+
+  // CASO 5 (default): Visita y Demo. Forms originales sin cambios.
   const t=TIPO_CONFIG[STATE.tipo];
   const div=CONFIG.divisiones[STATE.division];
-  const esAvance = STATE.tipo === 'oportunidad';
+  const esAvance = false; // ya no entramos aquí desde avance; conservado por compatibilidad
 
   let marcasHTML='';
   Object.entries(div.marcas).forEach(([linea,marcas])=>{
@@ -436,7 +638,14 @@ function renderForm(){
 function selDivision(key){guardarCampos();STATE.division=key;STATE.marca=null;renderForm()}
 function selMarca(m){guardarCampos();STATE.marca=STATE.marca===m?null:m;renderForm()}
 function selEtapa(id){guardarCampos();STATE.etapa=STATE.etapa===id?null:id;renderForm()}
-function selMoneda(v){guardarCampos();STATE.moneda=v;renderForm()}
+function selMoneda(v){
+  guardarCampos();
+  STATE.moneda=v;
+  // Reset explícito (string vacío, no delete) para que el asesor reescriba
+  // el monto en la nueva moneda — evita conversiones erróneas auto-llenadas desde la opp.
+  STATE.campos['monto-final']='';
+  renderForm();
+}
 function toggleComp(c){guardarCampos();const i=STATE.competidores.indexOf(c);if(i>-1)STATE.competidores.splice(i,1);else STATE.competidores.push(c);renderForm()}
 function toggleLider(email){guardarCampos();const i=STATE.lideres.indexOf(email);if(i>-1)STATE.lideres.splice(i,1);else STATE.lideres.push(email);renderForm()}
 function toggleContacto(){guardarCampos();STATE.contactoNuevo=!STATE.contactoNuevo;renderForm()}
@@ -461,20 +670,30 @@ async function guardar() {
 
   const esGanada = STATE.tipo === 'oportunidad' && STATE.resultado === 'ganada';
   const esPerdida = STATE.tipo === 'oportunidad' && STATE.resultado === 'perdida';
+  const esAvance = STATE.tipo === 'oportunidad' && STATE.resultado === 'avance';
   const esCierre = esGanada || esPerdida;
+  const esSubflujoOpp = esCierre || esAvance;
+  const opSel = STATE.oportunidadSeleccionada;
 
   // Validaciones por caso
-  if (!esCierre) {
-    // Avance, visita, demo
+  if (esSubflujoOpp) {
+    // Sin opp seleccionada y sin nombre libre → no se puede identificar la oportunidad
+    if (!opSel && !STATE.campos['opp-nombre']?.trim()) {
+      alert('Selecciona una oportunidad del listado o escribe su nombre');
+      return;
+    }
+    if (esAvance && !STATE.etapa) { alert('Selecciona la nueva etapa'); return; }
+    if (esGanada) {
+      if (!STATE.campos['monto-final']?.trim()) { alert('Escribe el monto final del cierre'); return; }
+      if (!STATE.campos['fecha-cierre-real']?.trim()) { alert('Indica la fecha de cierre real'); return; }
+    }
+    if (esPerdida && !STATE.razonPerdida) { alert('Selecciona la razón de pérdida'); return; }
+  } else {
+    // Visita / Demo
     const producto = STATE.campos['producto']?.trim();
     if (!STATE.marca) { alert('Selecciona una marca'); return; }
     if (!producto) { alert('Escribe el producto o modelo'); return; }
     if (STATE.tipo !== 'lead' && !STATE.etapa) { alert('Selecciona la etapa de la oportunidad'); return; }
-  } else if (esGanada) {
-    if (!STATE.campos['monto-final']?.trim()) { alert('Escribe el monto final del cierre'); return; }
-    if (!STATE.campos['fecha-cierre-real']?.trim()) { alert('Indica la fecha de cierre real'); return; }
-  } else if (esPerdida) {
-    if (!STATE.razonPerdida) { alert('Selecciona la razón de pérdida'); return; }
   }
 
   // Construir RazonPerdida con sufijo si aplica
@@ -487,29 +706,39 @@ async function guardar() {
     }
   }
 
+  // Cliente canónico de SAP cuando hay opp seleccionada (evita inconsistencias por typos)
+  const clienteFinal = opSel ? opSel.Cliente : cliente;
+  // OpprId de SAP. Vacío en visita/demo y en fallback de texto libre.
+  const opportunidadID = opSel ? String(opSel.NumOportunidad) : '';
+  // OppNombre: con opp seleccionada queda vacío (el ID es suficiente);
+  // en fallback o en visita/demo va el texto libre que tipeó el asesor.
+  const oppNombreFinal = (esSubflujoOpp && opSel) ? '' : (STATE.campos['opp-nombre'] || '');
+
   const registro = {
     tipo: STATE.tipo,
     modo: STATE.modo || 'campo',
     fecha: new Date().toISOString(),
-    cliente: cliente,
-    clienteContacto: STATE.campos['cliente-contacto'],
-    clienteNuevo: !STATE.clienteExiste,
-    division: esCierre ? '' : STATE.division,
-    marca: esCierre ? '' : STATE.marca,
-    producto: esCierre ? '' : STATE.campos['producto'],
+    cliente: clienteFinal,
+    clienteContacto: esSubflujoOpp ? '' : STATE.campos['cliente-contacto'],
+    clienteNuevo: esSubflujoOpp ? false : !STATE.clienteExiste,
+    division: esSubflujoOpp ? '' : STATE.division,
+    // Avanzó con opp seleccionada: heredar marca de la opp (informativo, SAP ya la tiene)
+    marca: esCierre ? '' : (esAvance ? (opSel ? opSel.Marca : '') : STATE.marca),
+    producto: esSubflujoOpp ? '' : STATE.campos['producto'],
     etapa: esCierre ? '' : STATE.etapa,
     moneda: esPerdida ? '' : STATE.moneda,
-    monto: esCierre ? '' : STATE.campos['monto'],
-    cierre: esCierre ? '' : STATE.campos['cierre'],
-    presupuesto: esCierre ? '' : STATE.campos['presupuesto'],
-    oppNombre: STATE.campos['opp-nombre'] || '',
-    competidores: esCierre ? [] : STATE.competidores,
-    lideres: esCierre ? [] : STATE.lideres,
+    monto: esSubflujoOpp ? '' : STATE.campos['monto'],
+    cierre: esSubflujoOpp ? '' : STATE.campos['cierre'],
+    presupuesto: esSubflujoOpp ? '' : STATE.campos['presupuesto'],
+    oppNombre: oppNombreFinal,
+    opportunidadID: opportunidadID,
+    competidores: esSubflujoOpp ? [] : STATE.competidores,
+    lideres: esSubflujoOpp ? [] : STATE.lideres,
     notas: STATE.campos['notas'],
-    contactoNuevo: STATE.contactoNuevo ? {
+    contactoNuevo: (esSubflujoOpp || !STATE.contactoNuevo) ? null : {
       nombre: STATE.campos['c-nombre'], puesto: STATE.campos['c-puesto'],
       telefono: STATE.campos['c-tel'], email: STATE.campos['c-email']
-    } : null,
+    },
     asesor: CONFIG.usuario.email,
     resultadoCierre: esGanada ? 'ganada' : (esPerdida ? 'perdida' : ''),
     razonPerdida: razonPerdidaFinal,
@@ -541,9 +770,12 @@ async function guardar() {
 
   const titulo = esGanada ? 'OPORTUNIDAD GANADA'
                : esPerdida ? 'OPORTUNIDAD PERDIDA'
+               : esAvance ? 'AVANCE DE ETAPA'
                : registro.tipo.toUpperCase();
+  const etapaLabel = CONFIG.etapas.find(e=>e.id===STATE.etapa)?.label || STATE.etapa || '';
   const subtitulo = esGanada ? `Monto final: ${STATE.moneda} ${STATE.campos['monto-final']}`
                   : esPerdida ? `Razón: ${razonPerdidaFinal}`
+                  : esAvance ? `Nueva etapa: ${etapaLabel}`
                   : `${registro.marca} · ${registro.producto}`;
 
   if (resultado) {
@@ -588,6 +820,10 @@ window.cambiarModo          = cambiarModo;
 window.selResultadoOpp      = selResultadoOpp;
 window.volverSelectorOpp    = volverSelectorOpp;
 window.selRazonPerdida      = selRazonPerdida;
+window.onClienteCambio      = onClienteCambio;
+window.selOportunidad       = selOportunidad;
+window.refrescarOportunidades = refrescarOportunidades;
+window.onOportunidadesCargadas = onOportunidadesCargadas;
 
 window.addEventListener('DOMContentLoaded',()=>{
   const f=$('fecha-hoy');if(f)f.textContent=fechaHoy();

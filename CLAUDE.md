@@ -53,12 +53,25 @@ When in doubt about what a function does, read the file. Don't infer from names 
 
 ---
 
+## Data sources: present and future
+
+La app actualmente lee datos de oportunidades desde `Oportunidades.xlsx` en SharePoint vía Microsoft Graph API. Este es un arreglo temporal mientras el certificado SSL de SAP B1 Service Layer (`vinssa.vertrou.cloud:50000`) está pendiente de instalación por Vertrou.
+
+Cuando SAP esté disponible, la función `cargarOportunidadesAsesor()` en `sap.js` se reescribe internamente para llamar al endpoint `SalesOpportunities` de SAP Service Layer directamente. La firma externa de la función queda igual, así que el resto del frontend (`auth.js`, `app.js`) no requiere cambios. Es un cambio quirúrgico, no un rewrite.
+
+Mismo principio aplica para otras lecturas futuras (clientes, productos, ventas, etc.): la app define funciones de lectura abstraídas; las implementaciones internas cambian de xlsx a SAP cuando llegue el momento.
+
+El campo `OpportunidadID` guardado en la SharePoint List `Visitas Field App` es la pieza clave que permite a Power Automate (hoy) o a la app directamente (cuando SAP conecte) actualizar la oportunidad correcta en SAP B1 cuando se sincronice un cierre o avance de etapa.
+
+---
+
 ## Conventions — always do these
 
 - **Comments and UI strings in Spanish.** Code identifiers in English are fine; user-facing text and code comments stay Spanish.
 - **All money in MXP for the dashboard.** USD-origin lines convert via `TotalFrgn` with fallback to `ORTT.Rate`. See "Gotchas — SAP queries" below.
 - **All dates as text** in xlsx files uploaded to SharePoint. Format `dd-MM-yyyy`. Format `dd/MM/yyyy HH:mm` for human-readable display (use `convertTimeZone(..., 'UTC', 'Central Standard Time', ...)`).
 - **Asesor names match SAP exactly.** If a Presupuesto/dashboard name doesn't match SAP, add an entry to `DASHBOARD_CONFIG.mapaAlias` (Presupuesto → SAP) rather than renaming the SAP-side string.
+- **String matching against SAP-origin data uses exact normalized match.** Convención: `uppercase` + NFD strip de acentos + `trim`. Implementado como `dashNormNombre` (dashboard.js), `_normNombre` (sap.js), `normCliente` (app.js). Usar para matchear nombres de asesor y de cliente tipeados por el usuario contra valores que vienen de SAP/xlsx. No usar `includes` ni match tolerante salvo que se documente como concesión deliberada de UX.
 - **Localstorage as fallback.** When writes to SharePoint can fail, write to localStorage first. See `sap.js` for the pattern.
 - **Etapas reference `DASHBOARD_CONFIG.etapas`.** Six canonical stages with % and colors. Don't hardcode % or colors elsewhere.
 - **Check-in is mandatory** in the Field App before any of the four registro buttons enable. Don't add a registro flow that bypasses this — it breaks the GPS-per-activity guarantee.
@@ -142,6 +155,11 @@ When an asesor joins or leaves, update the appropriate list. If their name diffe
 ### Etapas (canonical, with %)
 Contacto Inicial 10%, Cotización 25%, Pruebas/Demostración 60%, Negociación 80%, Trámite con Compras 90%, Factura 95%. Colors defined once in `DASHBOARD_CONFIG.etapas` — reference them, don't redefine.
 
+### Identidad del asesor (mapeo MSAL → SAP)
+La app obtiene el email del usuario logueado vía MSAL (`account.username`, equivalente a `preferred_username` del idtoken). Ese email (lowercase) se mapea a un nombre de asesor SAP via la constante `EMAIL_A_ASESOR` en `config.js`. El nombre de asesor SAP debe coincidir EXACTAMENTE con la columna `Asesor` en `Oportunidades.xlsx` (que viene de `OSLP.SlpName` en SAP B1, típicamente en MAYÚSCULAS sin acentos). Cuando un asesor nuevo se sume al piloto, agregar entrada al mapeo. Cuando un asesor cambia su email (raro), actualizar la entrada.
+
+Si el usuario logueado no está en el mapeo, `STATE.asesorSAP` queda `null` y los tres sub-flujos de Actualizar Oportunidad (Avanzó / Se ganó / Se perdió) muestran un mensaje de "función en piloto" dentro del form. Los flujos de Nueva Visita y Demo Realizada siguen funcionando normalmente para todos los usuarios.
+
 ---
 
 ## Common tasks — where to edit
@@ -183,6 +201,13 @@ Don't propose work already in motion or already decided against:
 - Drill-down asesor from Gerente view — placeholder `alert()` in place, needs detail view.
 - Racha de actividad — hardcoded; will eventually pull from SharePoint List "Visitas Field App".
 - Replicate Field App to asesores piloto Rafael Moyeda and Néstor Carranza — pending.
+- **OVERRIDE temporal de `gperez@vinssa.com → KIMBERLY PORTILLO`** en `EMAIL_A_ASESOR` (config.js). Eliminar esta entrada cuando se expanda el piloto a más asesores. La entrada existe solo para que el Director (Gerardo) pueda probar el flujo end-to-end durante la fase de pulido sin requerir login con cuenta de asesor.
+- **Regenerar `Oportunidades.xlsx` con columna `DocCurrency`** cuando sea oportuno. Hoy la app asume MXP por defecto para pre-llenado de monto en cierres ganados. No es bloqueador para el piloto pero será importante cuando haya cierres en USD.
+- **Match exacto normalizado de nombres de cliente** (uppercase + sin acentos + trim) es la convención actual para matchear cliente tipeado por asesor contra cliente en `Oportunidades.xlsx`. Si los asesores reportan fricción frecuente con esto, migrar a match tolerante (contains).
+- **Búsqueda dentro del dropdown de oportunidades**: actualmente es dropdown plano. Cuando un asesor con muchas oportunidades reporte fricción al hacer scroll, agregar un campo de filtro por nombre/marca arriba del dropdown.
+- **Flujo "actuar como asesor" para directores y gerentes**: hoy la app está diseñada para que cada usuario MSAL mapee 1:1 a un asesor SAP. Los directores y gerentes pueden necesitar cerrar oportunidades en nombre de un asesor (cuando él delega, está fuera, o renuncia). Diseño futuro: dropdown adicional "Actuando como: [asesor]" visible solo para roles Director/Gerente. El cierre queda auditado como "cerrado por X en nombre de Y".
+- **Reasignación de oportunidades de asesores que salen**: cuando un asesor deja Vinssa, sus oportunidades activas en SAP quedan huérfanas si no se reasignan. Hoy la reasignación se hace manualmente en SAP. Futuro: vista para Gerentes que permita reasignar oportunidades de un asesor saliente a otro activo, con un solo flujo. Esto cierra el ciclo de gestión de carga por asesor.
+- **Medir uso del fallback de texto libre**: cada vez que un asesor cierra/avanza una oportunidad usando el campo de texto libre (porque no había oportunidad en SAP), eso es señal de que la disciplina de captura de oportunidades en SAP necesita atención. Agregar reporte simple que cuente cuántos registros pasaron por fallback (`OpportunidadID` vacío y `OppNombre` con texto) vs cuántos por dropdown (`OpportunidadID` poblado), segmentado por asesor y por mes. Si el ratio de fallback es alto (>20%), abrir conversación con los gerentes sobre captura en SAP.
 
 ---
 

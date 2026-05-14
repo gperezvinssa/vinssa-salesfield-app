@@ -298,3 +298,46 @@ textarea { min-height: 70px; resize: none; }
   margin-bottom: 16px;
   text-align: center;
 }
+
+/* ── Actualizar Oportunidad: dropdown + banner + refresh + mensaje piloto ───── */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.card-title-row .card-title { margin-bottom: 0; }
+.btn-refresh {
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 1;
+}
+.btn-refresh:hover { background: #F5F4F0; }
+.btn-refresh:disabled { opacity: 0.5; cursor: wait; }
+.opp-banner {
+  background: #F0F7FF;
+  border: 0.5px solid #B7D4F4;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #185FA5;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.opp-banner strong { color: #0A3D6B; }
+.msg-piloto {
+  text-align: left;
+  background: #FFF8EC;
+  border: 0.5px solid #F1D396;
+}
+.hint-piloto {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 8px;
+  line-height: 1.4;
+}

@@ -194,6 +194,7 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     ResultadoCierre: registro.resultadoCierre || '',
     RazonPerdida: registro.razonPerdida || '',
     OppNombre: registro.oppNombre || '',
+    OpportunidadID: registro.opportunidadID || '',
     Marca: registro.marca || '',
     Producto: registro.producto || '',
     Etapa: registro.etapa || '',
@@ -292,4 +293,114 @@ async function sincronizarConSAP(registro) {
   await guardarEnSharePoint(registro, null, null);
 
   return { sapOppId, sapActId, errores: ['SAP: pendiente via Power Automate'] };
+}
+
+// ── Lectura de Oportunidades.xlsx vía Graph Workbook API ─────────────────────
+// Cache propio — no compartir con DASH_STATE porque el dashboard lo limpia
+// al entrar a la vista de resultados y eso invalidaría refrescos del field app.
+
+const OPS_CACHE = { driveId: null };
+
+// Normaliza nombres para match exacto con SAP: uppercase, sin acentos, trim.
+// Misma convención que dashNormNombre en dashboard.js (copia local para no
+// acoplar sap.js al orden de carga de scripts).
+function _normNombre(str) {
+  return String(str || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim();
+}
+
+// Devuelve array de oportunidades del asesor SAP que viene en STATE.asesorSAP.
+// Si no hay asesor resuelto, o si Graph falla, devuelve []. No lanza errores
+// hacia el caller: la app debe seguir usable sin oportunidades.
+async function cargarOportunidadesAsesor() {
+  if (typeof STATE === 'undefined' || !STATE.asesorSAP) return [];
+
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (!accounts.length) return [];
+    const tokenRes = await msalInstance.acquireTokenSilent({
+      scopes: ['Sites.ReadWrite.All'],
+      account: accounts[0]
+    });
+    const token = tokenRes.accessToken;
+
+    // Resolver driveId si no está cacheado
+    if (!OPS_CACHE.driveId) {
+      const drivesRes = await fetch(
+        'https://graph.microsoft.com/v1.0/sites/versatilidadsaltillo.sharepoint.com:/sites/VINSSAAutomation:/drives',
+        { headers: { Authorization: 'Bearer ' + token } }
+      );
+      const drives = await drivesRes.json();
+      if (!drives.value || !drives.value.length) {
+        console.warn('No se encontró drive de SharePoint');
+        return [];
+      }
+      OPS_CACHE.driveId = drives.value[0].id;
+    }
+    const driveId = OPS_CACHE.driveId;
+
+    // Buscar el archivo
+    const itemsRes = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/root/children`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    const items = await itemsRes.json();
+    const file = (items.value || []).find(f => f.name === 'Oportunidades.xlsx');
+    if (!file) {
+      console.warn('Oportunidades.xlsx no encontrado en SharePoint');
+      return [];
+    }
+
+    // Leer la primera hoja — fallback a Hoja1 si Sheet1 no existe
+    let res = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${file.id}/workbook/worksheets/Sheet1/usedRange`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) {
+      res = await fetch(
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${file.id}/workbook/worksheets/Hoja1/usedRange`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) {
+        console.warn('No se pudo leer Oportunidades.xlsx');
+        return [];
+      }
+    }
+    const data = await res.json();
+    const values = data.values;
+    if (!values || values.length < 2) return [];
+
+    const headers = values[0].map(h => String(h).trim());
+    const rows = values.slice(1)
+      .filter(row => row.some(cell => cell !== '' && cell !== null))
+      .map(row => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = row[i] ?? '');
+        return obj;
+      });
+
+    // Filtrar por asesor del usuario logueado (match exacto normalizado)
+    const asesorNorm = _normNombre(STATE.asesorSAP);
+    const oportunidades = rows
+      .filter(r => _normNombre(r.Asesor) === asesorNorm)
+      .map(r => ({
+        NumOportunidad: String(r.NumOportunidad || '').trim(),
+        Cliente:        String(r.Cliente || '').trim(),
+        Descripcion:    String(r.Descripcion || '').trim(),
+        MontoEstimado:  parseFloat(r.MontoEstimado) || 0,
+        Etapa:          String(r.Etapa || '').trim(),
+        Marca:          String(r.Marca || '').trim(),
+        Linea:          String(r.Linea || '').trim(),
+        FechaCierre:    String(r.FechaCierre || '').trim()
+      }));
+
+    console.log(`Oportunidades cargadas para ${STATE.asesorSAP}: ${oportunidades.length}`);
+    return oportunidades;
+  } catch(e) {
+    console.warn('Error cargando oportunidades:', e.message);
+    return [];
+  }
 }
