@@ -1,7 +1,22 @@
 function $(id){return document.getElementById(id)}
 function fechaHoy(){return new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',timeZone:CONFIG.timezone})}
 function iniciales(n){return n.split(' ').slice(0,2).map(x=>x[0]).join('').toUpperCase()}
-function mostrarScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));const s=$(id);if(s){s.classList.add('active');window.scrollTo(0,0)}}
+function mostrarScreen(id){
+  // Gestiona inline style.display además de la clase .active para evitar choque
+  // con navSwitch (bottom nav) que también escribe inline display. Sin esto,
+  // navegar via bottom nav y luego tapear un sub-flujo deja el form oculto por
+  // el inline display:none residual aunque tenga .active.
+  document.querySelectorAll('.screen').forEach(s=>{
+    s.classList.remove('active');
+    s.style.display='none';
+  });
+  const s=$(id);
+  if(s){
+    s.classList.add('active');
+    s.style.display='block';
+    window.scrollTo(0,0);
+  }
+}
 
 const STATE={
   modo:null,                           // null=selector | 'campo' | 'gabinete'
