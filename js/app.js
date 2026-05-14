@@ -1048,5 +1048,10 @@ window.addEventListener('DOMContentLoaded',()=>{
   // (el chip "Cambiar modo" permite al asesor cerrar la visita y salir).
   STATE.modo = localStorage.getItem('vinssa_checkin_activo') ? 'campo' : null;
   renderHome();
-  mostrarScreen('screen-home');
+  // Solo navegar a screen-home si hay sesión MSAL activa. Sin sesión, dejar
+  // screen-login visible para que el usuario pueda tapear el botón "Entrar".
+  // iniciarApp en auth.js se encarga del switch tras login exitoso.
+  let haySession = false;
+  try { haySession = msalInstance.getAllAccounts().length > 0; } catch(_) {}
+  if (haySession) mostrarScreen('screen-home');
 });
