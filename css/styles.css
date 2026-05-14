@@ -360,9 +360,10 @@ textarea { min-height: 70px; resize: none; }
   background: var(--color-background-primary, #FFFFFF);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-sm);
-  /* 60vh = ~60% del viewport; se adapta a celular con teclado abierto.
-     En desktop alto da ~480px, en celular ~400px sin teclado, ~300px con teclado. */
-  max-height: 60vh;
+  /* Altura fija para que la lista nunca exceda el área visible debajo del input
+     y no fuerce scroll del documento. Con 280px caben ~6 opciones de 1 línea o
+     ~4-5 de 2 líneas. Scroll interno cuando hay más opciones. */
+  max-height: 280px;
   overflow-y: auto;
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   margin-bottom: 8px;

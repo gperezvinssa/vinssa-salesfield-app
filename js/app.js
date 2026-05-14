@@ -101,9 +101,9 @@ function cbOpen(boxId){
   cbRenderList(boxId);
   setTimeout(()=>{
     const el = document.getElementById(boxId);
-    // 'start' empuja el input al tope del viewport para maximizar el espacio
-    // disponible debajo para la lista (importante en celular con teclado abierto).
-    if(el) el.scrollIntoView({ block:'start', behavior:'smooth' });
+    // 'nearest' solo scrollea si el input NO está visible — evita forzar scroll
+    // del documento al abrir la lista, que creaba un segundo scrollbar persistente.
+    if(el) el.scrollIntoView({ block:'nearest', behavior:'smooth' });
   }, 50);
 }
 
