@@ -1142,7 +1142,9 @@ function renderForm(){
     `:''}
   </div>`;
 
-  const liderSection=STATE.tipo==='demo'?`<div class="card">
+  // Líder de línea: visible para Visita y Demo. Opcional en ambos casos (no hay
+  // validación en guardar() que lo requiera). Paridad visual con Demo: sin badge "opc".
+  const liderSection=(STATE.tipo==='demo'||STATE.tipo==='visita')?`<div class="card">
     <div class="card-title">Líder de línea presente</div>
     <div class="search-box">
       <span class="search-icon">&#9906;</span>
