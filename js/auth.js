@@ -121,7 +121,37 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+// ── Token silencioso con fallback a popup ────────────────────────────────────
+// Wrapper de msalInstance.acquireTokenSilent que cae a acquireTokenPopup cuando
+// MSAL no puede renovar el token en silencio. Casos cubiertos:
+// - InteractionRequiredAuthError: token expirado, MFA requerida, consent_required.
+// - BrowserAuthError con errorCode 'monitor_window_timeout': el iframe oculto que
+//   MSAL usa para renovar excedió su timeout (típico tras horas de inactividad).
+// Si el popup también falla, re-lanzamos el error ORIGINAL (no el del popup) para
+// que el caller decida cómo presentar el problema.
+async function acquireTokenSafe(request) {
+  try {
+    return await msalInstance.acquireTokenSilent(request);
+  } catch(e) {
+    const esInteraccionRequerida =
+      (typeof msal !== 'undefined' && msal.InteractionRequiredAuthError && e instanceof msal.InteractionRequiredAuthError) ||
+      (e && (e.errorCode === 'monitor_window_timeout'
+          || e.errorCode === 'consent_required'
+          || e.errorCode === 'login_required'
+          || e.errorCode === 'interaction_required'));
+    if (!esInteraccionRequerida) throw e;
+    console.warn('acquireTokenSilent falló (' + (e.errorCode || e.message) + '), intentando popup');
+    try {
+      return await msalInstance.acquireTokenPopup(request);
+    } catch(popupErr) {
+      console.error('acquireTokenPopup también falló:', popupErr);
+      throw e; // re-lanza el error original — el caller maneja la UX
+    }
+  }
+}
+
 // ── Exponer funciones globales ───────────────────────────────────────────────
 
-window.loginMicrosoft = loginMicrosoft;
-window.cerrarSesion   = cerrarSesion;
+window.loginMicrosoft   = loginMicrosoft;
+window.cerrarSesion     = cerrarSesion;
+window.acquireTokenSafe = acquireTokenSafe;

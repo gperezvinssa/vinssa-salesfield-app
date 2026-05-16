@@ -238,7 +238,7 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
   }
 
   try {
-    const tokenResponse = await msalInstance.acquireTokenSilent({
+    const tokenResponse = await acquireTokenSafe({
       scopes: ['Sites.ReadWrite.All'],
       account: msalInstance.getAllAccounts()[0]
     });
@@ -329,7 +329,7 @@ async function cargarOportunidadesAsesor() {
   try {
     const accounts = msalInstance.getAllAccounts();
     if (!accounts.length) return [];
-    const tokenRes = await msalInstance.acquireTokenSilent({
+    const tokenRes = await acquireTokenSafe({
       scopes: ['Sites.ReadWrite.All'],
       account: accounts[0]
     });
@@ -390,19 +390,27 @@ async function cargarOportunidadesAsesor() {
         return obj;
       });
 
-    // Filtrar por asesor del usuario logueado (match exacto normalizado)
+    // Filtrar por asesor del usuario logueado (match exacto normalizado).
+    // Mapear las 13 columnas del xlsx preservando capitalización original (Mayúscula
+    // inicial) — convención STATE.* consistente con cargarClientesActivos y simplifica
+    // migración futura a SAP B1 Service Layer (PascalCase nativo).
     const asesorNorm = _normNombre(STATE.asesorSAP);
     const oportunidades = rows
       .filter(r => _normNombre(r.Asesor) === asesorNorm)
       .map(r => ({
-        NumOportunidad: String(r.NumOportunidad || '').trim(),
-        Cliente:        String(r.Cliente || '').trim(),
-        Descripcion:    String(r.Descripcion || '').trim(),
-        MontoEstimado:  parseFloat(r.MontoEstimado) || 0,
-        Etapa:          String(r.Etapa || '').trim(),
-        Marca:          String(r.Marca || '').trim(),
-        Linea:          String(r.Linea || '').trim(),
-        FechaCierre:    String(r.FechaCierre || '').trim()
+        Asesor:          String(r.Asesor || '').trim(),
+        Cliente:         String(r.Cliente || '').trim(),
+        NumOportunidad:  String(r.NumOportunidad || '').trim(),
+        Descripcion:     String(r.Descripcion || '').trim(),
+        FechaApertura:   String(r.FechaApertura || '').trim(),
+        FechaCierre:     String(r.FechaCierre || '').trim(),
+        MontoEstimado:   parseFloat(r.MontoEstimado) || 0,
+        MontoPonderado:  parseFloat(r.MontoPonderado) || 0,
+        EtapaCodigo:     parseFloat(r.EtapaCodigo) || 0,
+        Etapa:           String(r.Etapa || '').trim(),
+        Probabilidad:    parseFloat(r.Probabilidad) || 0,
+        Linea:           String(r.Linea || '').trim(),
+        Marca:           String(r.Marca || '').trim()
       }));
 
     console.log(`Oportunidades cargadas para ${STATE.asesorSAP}: ${oportunidades.length}`);
@@ -426,7 +434,7 @@ async function cargarClientesActivos() {
   try {
     const accounts = msalInstance.getAllAccounts();
     if (!accounts.length) return [];
-    const tokenRes = await msalInstance.acquireTokenSilent({
+    const tokenRes = await acquireTokenSafe({
       scopes: ['Sites.ReadWrite.All'],
       account: accounts[0]
     });

@@ -120,7 +120,7 @@ async function dashGetToken() {
   if (DASH_STATE.token) return DASH_STATE.token;
   const accounts = msalInstance.getAllAccounts();
   if (!accounts.length) throw new Error('No hay sesión activa');
-  const result = await msalInstance.acquireTokenSilent({
+  const result = await acquireTokenSafe({
     scopes: ['Sites.ReadWrite.All', 'User.Read'],
     account: accounts[0]
   });
@@ -971,6 +971,7 @@ function _pipelineHtml(asesorNorm, divisionesVisibles) {
 // el orden de los segmentos dentro de cada barra.
 const _PM_ETAPAS_VISIBLES = ['Cotización', 'Pruebas / Demostración', 'Negociación', 'Trámite con Compras'];
 const _PM_COLOR_VENCIDA = '#E24B4A';
+const _PM_COLOR_SIN_FECHA = '#9CA39E'; // gris medio — distinto del rojo de Vencidas y del gris claro de meses vacíos
 const _PM_MESES_FUTURO = 5; // mes actual + 5 = 6 meses totales
 
 // Agrupa STATE.oportunidades filtradas por rol en buckets {vencidas, [mes1..mesN]}.
@@ -990,8 +991,11 @@ function _pipelineMensualBuckets(asesorNorm, divisionesVisibles) {
     return true;
   });
 
-  // Buckets vacíos: vencidas + próximos N meses (mes actual + N futuros)
+  // Buckets vacíos: sin fecha + vencidas + próximos N meses (mes actual + N futuros).
+  // Orden visual: sin fecha (más arriba) → vencidas → meses futuros. Sin fecha y vencidas
+  // se eliminan si quedan vacíos tras el bucketing — ver final de la función.
   const buckets = [];
+  buckets.push({ id: 'sin-fecha', label: 'Sin fecha proyectada', esSinFecha: true, opps: [], porEtapa: {} });
   buckets.push({ id: 'vencidas', label: '⚠ Vencidas', esVencidas: true, opps: [], porEtapa: {} });
   for (let i = 0; i <= _PM_MESES_FUTURO; i++) {
     const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
@@ -1007,24 +1011,38 @@ function _pipelineMensualBuckets(asesorNorm, divisionesVisibles) {
     });
   }
 
+  const sinFechaBucket = buckets[0];
+  const vencidasBucket = buckets[1];
+
   oppsFiltradas.forEach(o => {
-    const f = dashParseFecha(o.FechaCierre);
-    if (!f || isNaN(f)) return; // Sin FechaCierre → excluida totalmente
     const etapa = String(o.Etapa || '').trim();
     const monto = parseFloat(o.MontoEstimado || 0);
+    const f = dashParseFecha(o.FechaCierre);
+
+    // Sin FechaCierre válida → bucket dedicado, sin filtrar por etapa visible
+    // (queremos visibilidad total de capturas incompletas).
+    if (!f || isNaN(f)) {
+      const fechaApertura = dashParseFecha(o.FechaApertura);
+      const oppEnriquecida = { ...o, _monto: monto, _fecha: null, _fechaApertura: fechaApertura };
+      sinFechaBucket.opps.push(oppEnriquecida);
+      if (!sinFechaBucket.porEtapa[etapa]) sinFechaBucket.porEtapa[etapa] = [];
+      sinFechaBucket.porEtapa[etapa].push(oppEnriquecida);
+      return;
+    }
+
     const oppEnriquecida = { ...o, _monto: monto, _fecha: f };
 
     if (f < hoyInicio) {
       // Vencidas: incluye todas las etapas visibles. Etapas excluidas se ignoran.
       if (!_PM_ETAPAS_VISIBLES.includes(etapa)) return;
-      buckets[0].opps.push(oppEnriquecida);
-      if (!buckets[0].porEtapa[etapa]) buckets[0].porEtapa[etapa] = [];
-      buckets[0].porEtapa[etapa].push(oppEnriquecida);
+      vencidasBucket.opps.push(oppEnriquecida);
+      if (!vencidasBucket.porEtapa[etapa]) vencidasBucket.porEtapa[etapa] = [];
+      vencidasBucket.porEtapa[etapa].push(oppEnriquecida);
       return;
     }
 
     // Bucket por mes futuro: solo si cae dentro de los próximos 6 meses
-    for (let i = 1; i < buckets.length; i++) {
+    for (let i = 2; i < buckets.length; i++) {
       const b = buckets[i];
       if (f.getFullYear() === b.anio && f.getMonth() === b.mes) {
         if (!_PM_ETAPAS_VISIBLES.includes(etapa)) return;
@@ -1042,8 +1060,10 @@ function _pipelineMensualBuckets(asesorNorm, divisionesVisibles) {
     b.total = b.opps.reduce((s, o) => s + o._monto, 0);
     b.count = b.opps.length;
   });
-  // Eliminar bucket vencidas si está vacío (decisión de UX: si no hay vencidas, no estorbar).
-  if (buckets[0].opps.length === 0) buckets.shift();
+  // Eliminar buckets opcionales vacíos (sin fecha y vencidas). Orden importante:
+  // borrar vencidas primero (índice 1) para no shiftear el de sin fecha.
+  if (vencidasBucket.opps.length === 0) buckets.splice(1, 1);
+  if (sinFechaBucket.opps.length === 0) buckets.shift();
 
   const pico = Math.max(0, ...buckets.map(b => b.total));
   return { buckets, pico };
@@ -1085,9 +1105,15 @@ function _pipelineMensualHtml(asesorNorm, divisionesVisibles) {
     // Segmentos: para vencidas, una sola barra roja sólida (no se desglosa por etapa visualmente
     // — el drill muestra la lista completa ordenada por fecha). Para meses, segmentos por etapa.
     let segmentos = '';
-    if (b.total === 0) {
-      // Mes vacío — barra gris muy clarita para comunicar "sí, sin nada"
+    if (b.total === 0 && !b.esSinFecha) {
+      // Mes vacío — barra gris muy clarita para comunicar "sí, sin nada".
+      // (Sin fecha proyectada cae al else de abajo: aunque _monto sea 0 queremos
+      // mostrar la barra gris media y permitir drill-down con la lista.)
       segmentos = `<div class="dash-pm-seg dash-pm-seg-empty" style="width:100%"></div>`;
+    } else if (b.esSinFecha) {
+      segmentos = `<div class="dash-pm-seg" style="width:100%;background:${_PM_COLOR_SIN_FECHA};cursor:pointer"
+        onclick="event.stopPropagation();dashPmDrill('${drillId}','${b.id}','sin-fecha')"
+        title="Sin fecha proyectada · ${dashFmt(b.total)} · ${b.count} opps"></div>`;
     } else if (b.esVencidas) {
       segmentos = `<div class="dash-pm-seg" style="width:100%;background:${_PM_COLOR_VENCIDA};cursor:pointer"
         onclick="event.stopPropagation();dashPmDrill('${drillId}','${b.id}','vencidas')"
@@ -1113,11 +1139,17 @@ function _pipelineMensualHtml(asesorNorm, divisionesVisibles) {
       }
     }
 
+    // Tap en row-head abre drill apropiado al tipo de bucket. Para Sin Fecha y
+    // Vencidas el drill usa su ordenamiento dedicado (FechaApertura desc / FechaCierre asc);
+    // para meses usa 'todas' (etapas mezcladas ordenadas por monto desc).
+    const headEtapa = b.esSinFecha ? 'sin-fecha' : (b.esVencidas ? 'vencidas' : 'todas');
+    const totalLabel = (b.esSinFecha && b.total === 0) ? '—' : dashFmt(b.total);
+
     return `
       <div class="dash-pm-row">
-        <div class="dash-pm-row-head" onclick="dashPmDrill('${drillId}','${b.id}','todas')" style="cursor:pointer">
+        <div class="dash-pm-row-head" onclick="dashPmDrill('${drillId}','${b.id}','${headEtapa}')" style="cursor:pointer">
           <div class="dash-pm-label">${b.label} · ${b.count} ${b.count === 1 ? 'opp' : 'opps'}</div>
-          <div class="dash-pm-total">${dashFmt(b.total)}</div>
+          <div class="dash-pm-total">${totalLabel}</div>
         </div>
         <div class="dash-pm-bar">${segmentos}</div>
         <div id="${drillId}" class="dash-pm-drill" style="display:none"></div>
@@ -1183,6 +1215,15 @@ function dashPmDrill(drillId, bucketId, etapa) {
     // Todas las vencidas, más antiguas primero (más vencidas arriba)
     opps = [...bucket.opps].sort((a, b) => a._fecha - b._fecha);
     titulo = `Vencidas · ${opps.length} opps`;
+  } else if (etapa === 'sin-fecha') {
+    // Sin fecha proyectada: ordenadas por FechaApertura desc (más recientes primero).
+    // Si _fechaApertura es null cae al final.
+    opps = [...bucket.opps].sort((a, b) => {
+      const fa = a._fechaApertura ? a._fechaApertura.getTime() : -Infinity;
+      const fb = b._fechaApertura ? b._fechaApertura.getTime() : -Infinity;
+      return fb - fa;
+    });
+    titulo = `Sin fecha proyectada · ${opps.length} opps`;
   } else if (etapa === 'todas') {
     opps = [...bucket.opps].sort((a, b) => b._monto - a._monto);
     titulo = `${bucket.label.replace('⚠ ','')} · todas las etapas · ${opps.length} opps`;
