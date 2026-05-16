@@ -282,6 +282,20 @@ Don't propose work already in motion or already decided against:
 - **Cálculo de % de cierre real basado en histórico**: actualmente los % de probabilidad por etapa vienen de configuración (`DASHBOARD_CONFIG.etapas`: Cotización=25%, Negociación=80%, etc.) pero no reflejan tasa real de cierre histórica de Vinssa. Pendiente: agregar análisis que calcule histórico de oportunidades cerradas vs perdidas por etapa para sustituir o complementar los % configurados. Esto permitiría visualización de monto ponderado realista en el futuro (en el tab Pipeline y en Por Mes si se decide mostrar ponderado).
 - **Pipeline por Mes — mejoras futuras**: filtros adicionales (por línea, por marca, por cliente específico), exportación a CSV, comparativa contra meses anteriores ("¿cómo lucía este mismo bucket hace 30 días?"), alertas automáticas para oportunidades vencidas (Power Automate notificando al asesor cuando una opp cruza vencida sin actualización).
 
+### Hallazgos del 2026-05-15 — calidad de datos de Oportunidades
+
+Descubiertos al probar la sección "Cierre proyectado por mes" con datos reales (override `gperez@vinssa.com → RAMON VILLEGAS`, 76 clientes formalmente asignados). La sección apareció vacía y la investigación reveló múltiples capas de problema:
+
+- **Bug en lectura de `Oportunidades.xlsx`**: `cargarOportunidadesAsesor` en `sap.js` solo mapea 8 de las 13 columnas del xlsx. Faltan: `Asesor`, `FechaApertura`, `MontoPonderado`, `EtapaCodigo`, `Probabilidad`. Verificado en consola: `STATE.oportunidades[0]` no tiene propiedad `Asesor`. Consecuencia inmediata: el filtro por rol no funciona en el tab Pipeline ni en la sección "Cierre proyectado por mes"; el dashboard renderiza con datos truncados. **Pendiente:** revisar el mapper en `cargarOportunidadesAsesor` y asegurar lectura completa preservando capitalización original del xlsx (Mayúsculas, según convención `STATE.*`).
+
+- **Discrepancia SAP ↔ app en cantidad de oportunidades**: SAP reporta 868 oportunidades con `Status='O'`, pero `STATE.oportunidades.length = 37` para el usuario logueado. Investigar si el delta es filtro de asesor legítimo (solo carga las de Ramón Villegas por nombre) o si hay un filtro adicional silencioso. Cruzar con el bug de columnas faltantes anterior — si `Asesor` no se está leyendo, el filtro de asesor podría estar fallando y arrastrando otros efectos.
+
+- **FechaCierre vacía sistemáticamente en oportunidades cargadas**: `STATE.oportunidades.filter(o => o.FechaCierre).length = 0`. Las 37 opps cargadas no tienen `FechaCierre` poblada. **NO es bug de código** — es problema de captura en SAP. Muchas oportunidades son antiguas (2018-2019) creadas y nunca actualizadas. Esta es la razón principal por la que la sección "Cierre proyectado por mes" no muestra datos útiles incluso después de arreglar el bug de carga.
+
+- **Limpieza de datos en SAP — conversación pendiente con Fernando Barajas + gerentes**: las 868 oportunidades "abiertas" en SAP probablemente contienen mayoría de oportunidades fantasmas (creadas, nunca cerradas, sin FechaCierre, sin actualizaciones recientes). Temas a discutir: disciplina de captura (FechaCierre obligatoria, Asesor asignado, moneda explícita), cierre periódico de oportunidades obsoletas, criterio operativo para distinguir "abierta legítima" vs. "zombie". Sin esta limpieza, los reportes y vistas de pipeline tienen valor limitado por más que el código esté correcto.
+
+- **Sección "Cierre proyectado por mes" bloqueada por calidad de datos**: la feature está implementada y validada operativamente (drill-down, filtros por rol, casos borde funcionan correctamente), pero no aporta valor visible al usuario hasta que (a) se arregle el bug de carga de columnas en `sap.js`, y (b) los datos en SAP se limpien (FechaCierre poblada en oportunidades vivas). Cuando ambos resuelvan, la feature debería revelar la distribución real del pipeline futuro.
+
 ---
 
 ## Out of scope for this repo
