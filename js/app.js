@@ -26,7 +26,7 @@ const STATE={
   tipo:null,division:'trazabilidad',marca:null,etapa:null,
   resultado:null,                      // null=sub-selector | 'avance' | 'ganada' | 'perdida'
   razonPerdida:null,                   // string elegido cuando resultado='perdida'
-  lideres:[],competidores:[],contactoNuevo:false,moneda:'MXP',
+  acompanantes:[],competidores:[],contactoNuevo:false,moneda:'MXP',
   campos:{},
   // Piloto de Actualizar Oportunidad: combobox de clientes y oportunidades.
   asesorSAP:null,                      // se resuelve en auth.js desde EMAIL_A_ASESOR
@@ -67,7 +67,7 @@ function restaurarCampos(){
 
 function irA(screenId,tipo){
   STATE.tipo=tipo;STATE.division=CONFIG.usuario.division_default;
-  STATE.marca=null;STATE.etapa=null;STATE.lideres=[];
+  STATE.marca=null;STATE.etapa=null;STATE.acompanantes=[];
   STATE.competidores=[];STATE.contactoNuevo=false;STATE.moneda='MXP';STATE.campos={};
   STATE.resultado=null;STATE.razonPerdida=null;
   STATE.oportunidadSeleccionada=null;
@@ -1102,11 +1102,23 @@ function renderForm(){
 
   const etapasHTML=CONFIG.etapas.map(e=>`<div class="stage-item ${STATE.etapa===e.id?'sel':''}" onclick="selEtapa('${e.id}')">${e.label}</div>`).join('');
 
-  const lideresHTML=CONFIG.lideres.map(l=>{
-    const sel=STATE.lideres.includes(l.email);
-    return `<div class="lider-item" onclick="toggleLider('${l.email}')">
-      <div class="avatar" style="${sel?'background:#EAF3DE;color:#0F6E56':''}">${iniciales(l.nombre)}</div>
-      <div><div class="lider-name">${l.nombre}</div><div class="lider-lineas">${l.lineas.join(' · ')}</div></div>
+  // Acompañantes (líderes / ingenieros / gerencia-dirección). Lista plana con
+  // badge de rol; reuso las clases .lider-item/.lider-name/.lider-lineas
+  // (presentación genérica, no implica que todos sean líderes).
+  const acompanantesHTML=CONFIG.acompanantes.map(a=>{
+    const sel=STATE.acompanantes.includes(a.email);
+    const scope = a.linea || a.division || '';
+    const subtext = scope ? `${a.rol} · ${scope}` : a.rol;
+    const reportaLine = a.reportaA
+      ? `<div style="font-size:11px;color:var(--color-text-tertiary,#888);margin-top:1px">reporta a ${a.reportaA}</div>`
+      : '';
+    return `<div class="lider-item" onclick="toggleAcompanante('${a.email}')">
+      <div class="avatar" style="${sel?'background:#EAF3DE;color:#0F6E56':''}">${iniciales(a.nombre)}</div>
+      <div>
+        <div class="lider-name">${a.nombre}</div>
+        <div class="lider-lineas">${subtext}</div>
+        ${reportaLine}
+      </div>
       ${sel?'<span style="margin-left:auto;color:var(--green);font-size:13px">✓</span>':''}
     </div>`;
   }).join('');
@@ -1142,16 +1154,16 @@ function renderForm(){
     `:''}
   </div>`;
 
-  // Líder de línea: visible para Visita y Demo. Opcional en ambos casos (no hay
-  // validación en guardar() que lo requiera). Paridad visual con Demo: sin badge "opc".
+  // Acompañantes: visible para Visita y Demo. Opcional en ambos casos.
+  // Incluye líderes de línea, ingenieros de aplicación, gerencia y dirección.
   const liderSection=(STATE.tipo==='demo'||STATE.tipo==='visita')?`<div class="card">
-    <div class="card-title">Líder de línea presente</div>
+    <div class="card-title">Acompañantes en la visita</div>
     <div class="search-box">
       <span class="search-icon">&#9906;</span>
-      <input type="text" placeholder="Buscar líder..." oninput="filtrarLideres(this.value)">
+      <input type="text" placeholder="Buscar por nombre, rol o línea..." oninput="filtrarAcompanantes(this.value)">
     </div>
-    <div id="lideres-list">${lideresHTML}</div>
-    ${STATE.lideres.length>0?'<div class="nota-hint">Recibirán notificación para confirmar su asistencia</div>':''}
+    <div id="acompanantes-list">${acompanantesHTML}</div>
+    ${STATE.acompanantes.length>0?'<div class="nota-hint">Recibirán notificación para confirmar su asistencia</div>':''}
   </div>`:'';
 
   const opSection=STATE.tipo!=='lead'?`<div class="card">
@@ -1250,17 +1262,20 @@ function selMoneda(v){
   renderForm();
 }
 function toggleComp(c){guardarCampos();const i=STATE.competidores.indexOf(c);if(i>-1)STATE.competidores.splice(i,1);else STATE.competidores.push(c);renderForm()}
-function toggleLider(email){guardarCampos();const i=STATE.lideres.indexOf(email);if(i>-1)STATE.lideres.splice(i,1);else STATE.lideres.push(email);renderForm()}
+function toggleAcompanante(email){guardarCampos();const i=STATE.acompanantes.indexOf(email);if(i>-1)STATE.acompanantes.splice(i,1);else STATE.acompanantes.push(email);renderForm()}
 function toggleContacto(){guardarCampos();STATE.contactoNuevo=!STATE.contactoNuevo;renderForm()}
 function selResultadoOpp(resultado){STATE.resultado=resultado;renderForm()}
 function volverSelectorOpp(){guardarCampos();STATE.resultado=null;renderForm()}
 function selRazonPerdida(razon){guardarCampos();STATE.razonPerdida=razon;renderForm()}
 
-function filtrarLideres(q){
-  const lista=$('lideres-list');if(!lista)return;
+function filtrarAcompanantes(q){
+  const lista=$('acompanantes-list');if(!lista)return;
+  // Filtra contra todo el textContent del item: nombre + rol + línea + "reporta a X".
+  // Más útil que filtrar solo por nombre — permite "ingeniero", "visión", etc.
+  const needle=q.toLowerCase();
   lista.querySelectorAll('.lider-item').forEach(item=>{
-    const n=item.querySelector('.lider-name').textContent.toLowerCase();
-    item.style.display=n.includes(q.toLowerCase())?'':'none';
+    const t=item.textContent.toLowerCase();
+    item.style.display=t.includes(needle)?'':'none';
   });
 }
 
@@ -1347,7 +1362,7 @@ async function guardar() {
     oppNombre: oppNombreFinal,
     opportunidadID: opportunidadID,
     competidores: esSubflujoOpp ? [] : STATE.competidores,
-    lideres: esSubflujoOpp ? [] : STATE.lideres,
+    acompanantes: esSubflujoOpp ? [] : STATE.acompanantes,
     notas: STATE.campos['notas'],
     contactoNuevo: (esSubflujoOpp || !STATE.contactoNuevo) ? null : {
       nombre: STATE.campos['c-nombre'], puesto: STATE.campos['c-puesto'],
@@ -1425,9 +1440,9 @@ window.selMarca             = selMarca;
 window.selEtapa             = selEtapa;
 window.selMoneda            = selMoneda;
 window.toggleComp           = toggleComp;
-window.toggleLider          = toggleLider;
+window.toggleAcompanante    = toggleAcompanante;
 window.toggleContacto       = toggleContacto;
-window.filtrarLideres       = filtrarLideres;
+window.filtrarAcompanantes  = filtrarAcompanantes;
 window.guardar              = guardar;
 window.mostrarModalCheckin  = mostrarModalCheckin;
 window.renderHome           = renderHome;

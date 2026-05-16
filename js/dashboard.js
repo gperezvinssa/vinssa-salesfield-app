@@ -961,6 +961,258 @@ function _pipelineHtml(asesorNorm, divisionesVisibles) {
     </div>`;
 }
 
+// ── PIPELINE POR MES ─────────────────────────────────────────────────────────
+// Vista por fecha de cierre proyectada. Bucket "Vencidas" (FechaCierre < hoy) +
+// próximos 6 meses (mes actual + 5 siguientes). Barras horizontales apiladas con
+// segmentos por etapa. Solo etapas progresivas relevantes para pipeline futuro.
+
+// Etapas visibles en este tab. Excluye Contacto Inicial (fechas no confiables a
+// esa altura del ciclo) y Factura (ya cerrada operativamente). El orden define
+// el orden de los segmentos dentro de cada barra.
+const _PM_ETAPAS_VISIBLES = ['Cotización', 'Pruebas / Demostración', 'Negociación', 'Trámite con Compras'];
+const _PM_COLOR_VENCIDA = '#E24B4A';
+const _PM_MESES_FUTURO = 5; // mes actual + 5 = 6 meses totales
+
+// Agrupa STATE.oportunidades filtradas por rol en buckets {vencidas, [mes1..mesN]}.
+// Cada bucket trae las opps separadas por etapa (solo etapas visibles).
+function _pipelineMensualBuckets(asesorNorm, divisionesVisibles) {
+  const hoy = new Date();
+  const hoyInicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+
+  // Filtro por rol — mismo patrón que _pipelineHtml.
+  const oppsFiltradas = DASH_STATE.oportunidades.filter(o => {
+    if (asesorNorm && dashNormNombre(o.Asesor) !== asesorNorm) return false;
+    if (divisionesVisibles) {
+      const linea = String(o.Linea || '').trim().toLowerCase();
+      const div = DASHBOARD_CONFIG.mapaLineas[linea];
+      return div ? divisionesVisibles.includes(div) : false;
+    }
+    return true;
+  });
+
+  // Buckets vacíos: vencidas + próximos N meses (mes actual + N futuros)
+  const buckets = [];
+  buckets.push({ id: 'vencidas', label: '⚠ Vencidas', esVencidas: true, opps: [], porEtapa: {} });
+  for (let i = 0; i <= _PM_MESES_FUTURO; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+    const mes = d.getMonth();
+    const anio = d.getFullYear();
+    buckets.push({
+      id: `m-${anio}-${mes+1}`,
+      label: `${DASHBOARD_CONFIG.meses[mes]} ${anio}`,
+      esVencidas: false,
+      mes, anio,
+      opps: [],
+      porEtapa: {}
+    });
+  }
+
+  oppsFiltradas.forEach(o => {
+    const f = dashParseFecha(o.FechaCierre);
+    if (!f || isNaN(f)) return; // Sin FechaCierre → excluida totalmente
+    const etapa = String(o.Etapa || '').trim();
+    const monto = parseFloat(o.MontoEstimado || 0);
+    const oppEnriquecida = { ...o, _monto: monto, _fecha: f };
+
+    if (f < hoyInicio) {
+      // Vencidas: incluye todas las etapas visibles. Etapas excluidas se ignoran.
+      if (!_PM_ETAPAS_VISIBLES.includes(etapa)) return;
+      buckets[0].opps.push(oppEnriquecida);
+      if (!buckets[0].porEtapa[etapa]) buckets[0].porEtapa[etapa] = [];
+      buckets[0].porEtapa[etapa].push(oppEnriquecida);
+      return;
+    }
+
+    // Bucket por mes futuro: solo si cae dentro de los próximos 6 meses
+    for (let i = 1; i < buckets.length; i++) {
+      const b = buckets[i];
+      if (f.getFullYear() === b.anio && f.getMonth() === b.mes) {
+        if (!_PM_ETAPAS_VISIBLES.includes(etapa)) return;
+        b.opps.push(oppEnriquecida);
+        if (!b.porEtapa[etapa]) b.porEtapa[etapa] = [];
+        b.porEtapa[etapa].push(oppEnriquecida);
+        return;
+      }
+    }
+    // FechaCierre > 6 meses al futuro → fuera del rango visible (descarta).
+  });
+
+  // Calcular totales por bucket y el monto pico (para escala global)
+  buckets.forEach(b => {
+    b.total = b.opps.reduce((s, o) => s + o._monto, 0);
+    b.count = b.opps.length;
+  });
+  // Eliminar bucket vencidas si está vacío (decisión de UX: si no hay vencidas, no estorbar).
+  if (buckets[0].opps.length === 0) buckets.shift();
+
+  const pico = Math.max(0, ...buckets.map(b => b.total));
+  return { buckets, pico };
+}
+
+// Render del tab "Por Mes". Toma asesorNorm + divisiones igual que _pipelineHtml.
+function _pipelineMensualHtml(asesorNorm, divisionesVisibles) {
+  const { buckets, pico } = _pipelineMensualBuckets(asesorNorm, divisionesVisibles);
+  const etapasConfig = DASHBOARD_CONFIG.etapas;
+
+  // Caso sin nada: ni vencidas ni opps en próximos 6m
+  const totalVisible = buckets.reduce((s, b) => s + b.total, 0);
+  const countTotal = buckets.reduce((s, b) => s + b.count, 0);
+  if (countTotal === 0) {
+    return `
+      <div style="padding:14px 0 80px">
+        <div style="padding:24px 16px;text-align:center;color:var(--color-text-secondary);font-size:13px">
+          Sin oportunidades en pipeline para los próximos 6 meses.
+        </div>
+      </div>`;
+  }
+
+  const legend = _PM_ETAPAS_VISIBLES.map(et => `
+    <div class="dash-pm-leg-item">
+      <span class="dash-pm-leg-dot" style="background:${etapasConfig[et]?.color || '#888'}"></span>
+      <span>${et}</span>
+    </div>`).join('');
+
+  const filasHtml = buckets.map((b, idx) => {
+    const drillId = `dash-pm-drill-${b.id}`;
+    const widthPct = pico > 0 ? Math.max(2, (b.total / pico) * 100) : 0;
+
+    // Segmentos: para vencidas, una sola barra roja sólida (no se desglosa por etapa visualmente
+    // — el drill muestra la lista completa ordenada por fecha). Para meses, segmentos por etapa.
+    let segmentos = '';
+    if (b.total === 0) {
+      // Mes vacío — barra gris muy clarita para comunicar "sí, sin nada"
+      segmentos = `<div class="dash-pm-seg dash-pm-seg-empty" style="width:100%"></div>`;
+    } else if (b.esVencidas) {
+      segmentos = `<div class="dash-pm-seg" style="width:100%;background:${_PM_COLOR_VENCIDA};cursor:pointer"
+        onclick="event.stopPropagation();dashPmDrill('${drillId}','${b.id}','vencidas')"
+        title="Vencidas · ${dashFmt(b.total)} · ${b.count} opps"></div>`;
+    } else {
+      // Segmentos por etapa: cada uno con width proporcional al monto de la etapa
+      // EN ESTE MES, dividido por el monto del mes con más pipeline (escala global).
+      // Total width visible del row = (b.total / pico) * 100%.
+      segmentos = _PM_ETAPAS_VISIBLES.map(et => {
+        const ops = b.porEtapa[et] || [];
+        const totalEt = ops.reduce((s, o) => s + o._monto, 0);
+        if (totalEt <= 0) return '';
+        const widthEt = pico > 0 ? (totalEt / pico) * 100 : 0;
+        const c = etapasConfig[et]?.color || '#888';
+        return `<div class="dash-pm-seg" style="width:${widthEt}%;background:${c};cursor:pointer"
+          onclick="event.stopPropagation();dashPmDrill('${drillId}','${b.id}','${et.replace(/'/g,"\\'")}')"
+          title="${et} · ${dashFmt(totalEt)} · ${ops.length} opps"></div>`;
+      }).join('');
+      // Espacio restante (gris claro) para completar la barra al 100% del width del contenedor
+      const restante = 100 - widthPct;
+      if (restante > 0) {
+        segmentos += `<div class="dash-pm-seg dash-pm-seg-empty" style="width:${restante}%"></div>`;
+      }
+    }
+
+    return `
+      <div class="dash-pm-row">
+        <div class="dash-pm-row-head" onclick="dashPmDrill('${drillId}','${b.id}','todas')" style="cursor:pointer">
+          <div class="dash-pm-label">${b.label} · ${b.count} ${b.count === 1 ? 'opp' : 'opps'}</div>
+          <div class="dash-pm-total">${dashFmt(b.total)}</div>
+        </div>
+        <div class="dash-pm-bar">${segmentos}</div>
+        <div id="${drillId}" class="dash-pm-drill" style="display:none"></div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div style="padding:14px 0 80px">
+      <div style="padding:0 16px 8px">
+        <div style="font-size:20px;font-weight:600">${dashFmt(totalVisible)}</div>
+        <div style="font-size:12px;color:var(--color-text-secondary)">pipeline visible · ${countTotal} oportunidades</div>
+      </div>
+      <div class="dash-pm-legend">${legend}</div>
+      <div style="padding:0 16px">
+        ${filasHtml}
+      </div>
+    </div>`;
+}
+
+// Drill-down inline: expande lista debajo de la barra. Solo un panel abierto a
+// la vez — al abrir otro, cierra el anterior.
+let _PM_DRILL_OPEN = null;
+function dashPmDrill(drillId, bucketId, etapa) {
+  const el = document.getElementById(drillId);
+  if (!el) return;
+
+  // Si está abierto y se hace tap al mismo segmento+mes → cerrar (toggle).
+  const tag = `${drillId}::${etapa}`;
+  if (_PM_DRILL_OPEN === tag) {
+    el.style.display = 'none';
+    _PM_DRILL_OPEN = null;
+    return;
+  }
+  // Cerrar cualquier otro panel previamente abierto
+  if (_PM_DRILL_OPEN) {
+    const prev = _PM_DRILL_OPEN.split('::')[0];
+    const prevEl = document.getElementById(prev);
+    if (prevEl) prevEl.style.display = 'none';
+  }
+
+  // Reconstruir buckets para extraer los opps de este bucket+etapa
+  // (No cachear: re-computar es barato y evita inconsistencia post-refresh)
+  const asesorNorm = DASH_STATE.rol === 'asesor'
+    ? dashNormPresup(_findAsesorNombre(DASH_STATE.userEmail))
+    : null;
+  const divs = dashGetDivisionesVisibles();
+  const { buckets } = _pipelineMensualBuckets(asesorNorm, divs);
+  const bucket = buckets.find(b => b.id === bucketId);
+  if (!bucket) return;
+
+  let opps = [];
+  let titulo = '';
+  const hoy = new Date();
+  const hoyInicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+
+  if (etapa === 'vencidas') {
+    // Todas las vencidas, más antiguas primero (más vencidas arriba)
+    opps = [...bucket.opps].sort((a, b) => a._fecha - b._fecha);
+    titulo = `Vencidas · ${opps.length} opps`;
+  } else if (etapa === 'todas') {
+    opps = [...bucket.opps].sort((a, b) => b._monto - a._monto);
+    titulo = `${bucket.label.replace('⚠ ','')} · todas las etapas · ${opps.length} opps`;
+  } else {
+    opps = (bucket.porEtapa[etapa] || []).slice().sort((a, b) => b._monto - a._monto);
+    titulo = `${bucket.label.replace('⚠ ','')} · ${etapa} · ${opps.length} opps`;
+  }
+
+  const itemsHtml = opps.map(o => {
+    const dias = o._fecha ? Math.round((o._fecha - hoyInicio) / 86400000) : null;
+    const diasLabel = dias === null ? ''
+      : dias < 0 ? `<span style="color:${_PM_COLOR_VENCIDA};font-weight:500">vencida hace ${Math.abs(dias)}d</span>`
+      : dias === 0 ? `<span style="color:#BA7517;font-weight:500">vence hoy</span>`
+      : `faltan ${dias}d`;
+    const etapaLabel = String(o.Etapa || '').trim();
+    const cfg = DASHBOARD_CONFIG.etapas[etapaLabel];
+    const dot = cfg ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${cfg.color};margin-right:5px;vertical-align:middle"></span>` : '';
+    return `
+      <div class="dash-pm-drill-item">
+        <div style="flex:1;min-width:0">
+          <div class="dash-pm-drill-cliente">${o.Cliente || o.CardName || ''}</div>
+          <div class="dash-pm-drill-sub">
+            ${o.Descripcion ? o.Descripcion + ' · ' : ''}${dot}${etapaLabel || '—'}
+          </div>
+          <div class="dash-pm-drill-sub">
+            Cierre ${o.FechaCierre || '—'}${diasLabel ? ' · ' + diasLabel : ''}
+            ${!asesorNorm && o.Asesor ? ' · ' + o.Asesor : ''}
+          </div>
+        </div>
+        <div class="dash-pm-drill-monto">${dashFmt(o._monto)}</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="dash-pm-drill-head">${titulo}</div>
+    ${opps.length === 0
+      ? `<div style="padding:12px;text-align:center;color:var(--color-text-secondary);font-size:12px">Sin oportunidades en este corte.</div>`
+      : itemsHtml}`;
+  el.style.display = 'block';
+  _PM_DRILL_OPEN = tag;
+}
+
 // ── ASESOR VIEW ──────────────────────────────────────────────────────────────
 function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) {
   const met    = dashCalcMetricas(asesor, mes, anio, divs);
@@ -973,6 +1225,7 @@ function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) 
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('a-resumen',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('a-pipeline',this)">Pipeline</button>
+      <button class="dash-tab" onclick="dashTabSwitch('a-por-mes',this)">Por Mes</button>
       <button class="dash-tab" onclick="dashTabSwitch('a-riesgo',this)">En riesgo</button>
     </div>
 
@@ -1010,6 +1263,10 @@ function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) 
       ${_pipelineHtml(dashNormPresup(asesor), divs)}
     </div>
 
+    <div id="dash-page-a-por-mes" class="dash-page" style="overflow-y:auto">
+      ${_pipelineMensualHtml(dashNormPresup(asesor), divs)}
+    </div>
+
     <div id="dash-page-a-riesgo" class="dash-page" style="overflow-y:auto">
       ${_riesgoHtml(riesgo, false)}
     </div>`;
@@ -1044,6 +1301,7 @@ function _renderLider(container, mes, anio, isCurrent, mesLabel, divs) {
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('l-resumen',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('l-pipeline',this)">Pipeline</button>
+      <button class="dash-tab" onclick="dashTabSwitch('l-por-mes',this)">Por Mes</button>
       <button class="dash-tab" onclick="dashTabSwitch('l-asesores',this)">Asesores</button>
       <button class="dash-tab" onclick="dashTabSwitch('l-riesgo',this)">En riesgo</button>
     </div>
@@ -1064,6 +1322,10 @@ function _renderLider(container, mes, anio, isCurrent, mesLabel, divs) {
 
     <div id="dash-page-l-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(null, divs)}
+    </div>
+
+    <div id="dash-page-l-por-mes" class="dash-page" style="overflow-y:auto">
+      ${_pipelineMensualHtml(null, divs)}
     </div>
 
     <div id="dash-page-l-asesores" class="dash-page" style="overflow-y:auto">
@@ -1109,6 +1371,7 @@ function _renderGerente(container, mes, anio, isCurrent, mesLabel, divs) {
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('g-resumen',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-pipeline',this)">Pipeline</button>
+      <button class="dash-tab" onclick="dashTabSwitch('g-por-mes',this)">Por Mes</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-asesores',this)">Asesores</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-riesgo',this)">En riesgo</button>
     </div>
@@ -1133,6 +1396,10 @@ function _renderGerente(container, mes, anio, isCurrent, mesLabel, divs) {
 
     <div id="dash-page-g-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(null, divs)}
+    </div>
+
+    <div id="dash-page-g-por-mes" class="dash-page" style="overflow-y:auto">
+      ${_pipelineMensualHtml(null, divs)}
     </div>
 
     <div id="dash-page-g-asesores" class="dash-page" style="overflow-y:auto">
@@ -1337,6 +1604,7 @@ window.dashInit              = dashInit;
 window.dashNormPresup        = dashNormPresup;
 window.dashGetTotal          = dashGetTotal;
 window.dashParseFecha        = dashParseFecha;
+window.dashPmDrill           = dashPmDrill;
 
 // ── TEST MODE BAR (eliminar antes de producción) ──────────────────────────────
 window.dashTestMode = function(rol, division) {

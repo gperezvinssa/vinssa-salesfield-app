@@ -206,7 +206,11 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     MontoFinal: registro.montoFinal ? parseFloat(registro.montoFinal) : null,
     Moneda: registro.moneda || 'MXP',
     Competitor: registro.competidores?.join(', ') || '',
-    Lideres: registro.lideres?.join(', ') || '',
+    // Internal name de la columna sigue siendo "Lideres" aunque el display name
+    // se renombró a "Acompanante" en SharePoint. Mismo gotcha que Competidor↔Competitor.
+    // El payload concatena emails de líderes + ingenieros + gerencia/dirección sin distinguir;
+    // el rol se infiere al hacer reporting cruzando contra CONFIG.acompanantes.
+    Lideres: registro.acompanantes?.join(', ') || '',
     Notas: registro.notas || '',
     GPS_Lat: esGabinete ? null : (registro.gps?.lat || 0),
     GPS_Lng: esGabinete ? null : (registro.gps?.lng || 0),

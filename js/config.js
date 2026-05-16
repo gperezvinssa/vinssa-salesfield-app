@@ -40,11 +40,23 @@ const CONFIG = {
     { id: "factura",             label: "Factura",                  pct: 95  }
   ],
 
-  lideres: [
-    { nombre: "Antonio Martinez",  email: "amartinez@vinssa.com",  lineas: ["Marcaje", "Visión"] },
-    { nombre: "Jose Juan Aguillon",email: "jaguillon@vinssa.com",  lineas: ["Robótica"] },
-    { nombre: "Aldo Almaguer",     email: "aalmaguer@vinssa.com",  lineas: ["Herramientas"] },
-    { nombre: "Jonathan Roche",    email: "jroche@vinssa.com",     lineas: ["Visión", "Marcaje"] }
+  // Acompañantes que un asesor puede marcar en Visita/Demo: líderes de línea,
+  // ingenieros de aplicación, y gerencia/dirección. Selección opcional, multi-pick.
+  // El email es la identidad guardada en SharePoint (columna `Lideres` por internal
+  // name aunque su display ahora es `Acompanante`). El rol se infiere al hacer
+  // reporting cruzando el email contra este catálogo.
+  acompanantes: [
+    // Líderes de línea — uno por línea de Trazabilidad y Automatización.
+    { nombre: "Antonio Martinez",   email: "amartinez@vinssa.com", rol: "Líder de línea",        linea: "Visión" },
+    { nombre: "Jose Juan Aguillon", email: "jaguillon@vinssa.com", rol: "Líder de línea",        linea: "Trazabilidad" },
+    { nombre: "Aldo Almaguer",      email: "aalmaguer@vinssa.com", rol: "Líder de línea",        linea: "Robótica" },
+    { nombre: "Jonathan Roche",     email: "jroche@vinssa.com",    rol: "Líder de línea",        linea: "Herramienta de Atornillado" },
+    // Ingenieros de aplicación — apoyan a un líder específico en demos/visitas.
+    { nombre: "Luis Sanchez",       email: "lsanchez@vinssa.com",  rol: "Ingeniero de aplicación", linea: "Robótica", reportaA: "Aldo Almaguer" },
+    { nombre: "Jesús Ortíz",        email: "jortiz@vinssa.com",    rol: "Ingeniero de aplicación", linea: "Visión",   reportaA: "Antonio Martinez" },
+    // Gerencia y Dirección — scope por división o cross-división.
+    { nombre: "Fernando Barajas",   email: "fbarajas@vinssa.com",  rol: "Gerente",          division: "Trazabilidad y Automatización" },
+    { nombre: "Gerardo Pérez",      email: "gperez@vinssa.com",    rol: "Director Comercial" }
   ],
 
   competidores: [

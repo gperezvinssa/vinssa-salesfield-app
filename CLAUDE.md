@@ -88,6 +88,9 @@ El campo `OpportunidadID` guardado en la SharePoint List `Visitas Field App` es 
 ### SharePoint List column "Competidor"
 The display name is "Competidor" (Spanish) but the **internal name is "Competitor"** (English). `sap.js` writes to `Competitor:`. If you rename the column in SharePoint, update `sap.js`. If you "fix" the typo in `sap.js`, writes will fail silently.
 
+### SharePoint List column "Acompanante" (renamed from "Lideres")
+La columna que guarda los acompañantes en visita/demo se renombró en SharePoint de display name `Lideres` → `Acompanante` (mayo 2026, cuando se agregaron ingenieros de aplicación y gerencia/dirección al modelo). **Internal name sigue siendo `Lideres`** porque SharePoint preserva el internal name al renombrar display. `sap.js` escribe a `Lideres:`. Si alguien "actualiza" el código a `Acompanante:` pensando que es el nombre real, los writes fallan silenciosamente — mismo patrón que `Competidor↔Competitor`.
+
 ### SAP queries — Ventas
 - **Use `T2.TotalFrgn`, not `T2.LineTotal` directly.** MXP invoices have `DocRate=1`, which inflates USD totals if you divide by `DocRate`. The canonical pattern is `CASE WHEN T2.TotalFrgn <> 0 THEN T2.TotalFrgn WHEN T4b.Rate > 1 THEN T2.LineTotal / T4b.Rate ELSE T2.LineTotal / 17.5 END`.
 - **UNION ALL with ORIN (notas de crédito) is required.** Without it, totals are inflated because credits aren't subtracted. ORIN rows use the same shape but with **negated** Total.
@@ -142,11 +145,25 @@ Three role-scoped lists in `DASHBOARD_CONFIG`:
 
 When an asesor joins or leaves, update the appropriate list. If their name differs in Presupuesto vs SAP, also add to `mapaAlias`.
 
-### Líderes de línea (Trazabilidad)
-- Antonio Martinez — Marcaje, Visión
-- Jose Juan Aguillon — Robótica
-- Aldo Almaguer — Herramientas
-- Jonathan Roche — Visión, Marcaje (note: name appears in Presupuesto as "JONATHAN ROCHE", in SAP as "JONATHAN ROCHE TOR" — already aliased)
+### Acompañantes en Visita/Demo (líderes, ingenieros, gerencia/dirección)
+
+El form de Visita y Demo permite marcar quién acompañó al asesor (opcional, multi-select). Los emails seleccionados se concatenan y se guardan en la SharePoint List `Visitas Field App`. El rol (líder/ingeniero/gerente/director) se **infiere** al hacer reporting cruzando email contra `CONFIG.acompanantes` en `config.js`.
+
+**Líderes de línea (Trazabilidad y Automatización):**
+- Antonio Martinez — Visión
+- Jose Juan Aguillon — Trazabilidad (renderiza así en el form; en `divisiones[trazabilidad].marcas` la línea correspondiente se llama `Marcaje`)
+- Aldo Almaguer — Robótica
+- Jonathan Roche — Herramienta de Atornillado (en `divisiones[trazabilidad].marcas` la línea se llama `Herramientas`. Nota previa: name aparece en Presupuesto como "JONATHAN ROCHE", en SAP como "JONATHAN ROCHE TOR" — ya aliased en dashboard.js)
+
+**Ingenieros de aplicación** (apoyan a un líder en demos/visitas):
+- Luis Sanchez — Robótica (reporta a Aldo Almaguer)
+- Jesús Ortíz — Visión (reporta a Antonio Martinez)
+
+**Gerencia y Dirección:**
+- Fernando Barajas — Gerente, Trazabilidad y Automatización
+- Gerardo Pérez — Director Comercial
+
+Cuando alguien entra/sale de cualquiera de estos roles, actualizar `CONFIG.acompanantes` en `config.js`. El historial guardado en SharePoint sigue válido (los emails se preservan; el rol se re-infiere contra la versión actual del catálogo).
 
 ### SAP grupo → División mapping (`mapaGrupos`)
 - Identificacion, Herramienta de Ensamble → **Trazabilidad**
@@ -158,6 +175,35 @@ When an asesor joins or leaves, update the appropriate list. If their name diffe
 
 ### Etapas (canonical, with %)
 Contacto Inicial 10%, Cotización 25%, Pruebas/Demostración 60%, Negociación 80%, Trámite con Compras 90%, Factura 95%. Colors defined once in `DASHBOARD_CONFIG.etapas` — reference them, don't redefine.
+
+### Pipeline por Mes (dashboard)
+
+Vista por **fecha de cierre proyectada** de las oportunidades. Existe como tab "Por Mes" en las 3 vistas (Asesor, Líder, Gerente/Director) — comparte el helper `_pipelineMensualHtml(asesorNorm, divisionesVisibles)` que reutiliza exactamente el mismo patrón de filtrado por rol que `_pipelineHtml` (asesorNorm + `mapaLineas`).
+
+**Buckets renderizados:**
+- ⚠ Vencidas — `FechaCierre < hoy_00:00`. Se omite el bucket si no hay vencidas (no estorbar). Drill-down ordena por fecha ascendente (más antiguas primero).
+- Próximos 6 meses — mes actual + 5 siguientes. Cada bucket se muestra siempre, aunque esté vacío (barra gris clara con `$0 · 0 opps`) para comunicar gaps explícitamente.
+
+**Etapas incluidas** (segmentos de la barra):
+- Cotización, Pruebas / Demostración, Negociación, Trámite con Compras.
+
+**Etapas excluidas y razón:**
+- Contacto Inicial — muy temprano en el ciclo, las fechas de cierre proyectadas no son confiables a esa altura.
+- Factura — operativamente ya cerrada; no representa "pipeline futuro".
+- Cualquier etapa fuera del catálogo canónico de 6 — se ignora silenciosamente.
+
+**Escala visual:** las barras usan **escala global** — todas comparan contra el mes con más monto. Permite ver de un vistazo que un mes es 4× otro. La distribución por etapa dentro de cada mes se infiere por el ancho relativo de cada segmento.
+
+**Drill-down:** inline expand (panel debajo de la fila al tap), paralelo al UX del tab Pipeline existente. Solo un panel abierto a la vez. Tap en un segmento → opps de esa etapa en ese mes ordenadas por monto desc. Tap en el área del label del mes (no en un segmento específico) → todas las opps del mes, todas las etapas, ordenadas por monto desc. Tap en la barra de Vencidas → todas las vencidas ordenadas por fecha asc.
+
+**Filtrado por rol:** mismo patrón que el resto del dashboard.
+- Asesor → solo sus opps (filtrado por `Asesor === asesorNorm`).
+- Gerente/Líder → opps de su división (filtrado por `Linea` vía `DASHBOARD_CONFIG.mapaLineas`).
+- Director → todas.
+
+**Sin FechaCierre** → la opp se excluye totalmente del tab Por Mes (no aparece ni en vencidas ni en mes alguno). **Monto = 0/null** → no contribuye al ancho de la barra pero sí aparece en el drill-down con `$0` para que el asesor la vea.
+
+**Montos:** este tab consume `MontoEstimado` tal cual viene del xlsx (sin conversión a USD pendiente — ver pending work). Los montos pueden estar en MXP raw mientras la query de Oportunidades no se actualice.
 
 ### Identidad del asesor (mapeo MSAL → SAP)
 La app obtiene el email del usuario logueado vía MSAL (`account.username`, equivalente a `preferred_username` del idtoken). Ese email (lowercase) se mapea a un nombre de asesor SAP via la constante `EMAIL_A_ASESOR` en `config.js`. El nombre de asesor SAP debe coincidir EXACTAMENTE con la columna `Asesor` en `Oportunidades.xlsx` (que viene de `OSLP.SlpName` en SAP B1, típicamente en MAYÚSCULAS sin acentos). Cuando un asesor nuevo se sume al piloto, agregar entrada al mapeo. Cuando un asesor cambia su email (raro), actualizar la entrada.
@@ -230,6 +276,9 @@ Don't propose work already in motion or already decided against:
 - **Flujo de Lead**: agregar capacidad de seleccionar/crear Leads en SAP cuando Vertrou resuelva el SSL del Service Layer. Hoy si un asesor visita un prospecto sin CardCode, cae a fallback de texto libre (CardCode = null en SharePoint). Cuando SAP conecte, este flujo se reemplaza por selección de Leads (entidad OCRD con `CardType='L'`) y opción de crear nuevo Lead directamente.
 - **Re-export periódico de `Clientes Activos.xlsx`**: el archivo refleja un snapshot de SAP en el momento del export. Definir frecuencia de re-export (semanal, mensual) y/o automatizar con Power Automate cuando SAP esté disponible.
 - **Priorización en autocomplete de Clientes Activos**: deferida hasta que los datos de asignación de asesor en SAP sean confiables o se diseñe esquema alternativo. Actualmente ~32% de clientes están bajo MOSTRADOR o sin asesor asignado, y muchas asignaciones humanas no reflejan operación real. Por eso priorización por asesor no aporta valor universal — el combobox de check-in usa orden alfabético puro. Cuando los datos de SAP mejoren o se diseñe esquema alternativo (geográfico, por planta, por frecuencia de visita real, etc.), regresar a este punto y revisar `_cbCliActivoOrdenar` en `app.js`.
+- **Conversión de monto en Oportunidades a USD**: la query de `Oportunidades.xlsx` actualmente trae `MaxSumLoc` directo (probablemente MXP). La vista de Pipeline por Mes muestra los montos como vienen del xlsx sin conversión. Pendiente diseñar lógica de conversión consistente con OVs/Ventas (mismo patrón `CASE WHEN MaxSumFgn <> 0 ... ELSE MaxSumLoc / Rate`) cuando los asesores tengan disciplina de captura de moneda en SAP. Mientras tanto, los totales mostrados en Pipeline por Mes están inflados ~17× para opps en MXP.
+- **Cálculo de % de cierre real basado en histórico**: actualmente los % de probabilidad por etapa vienen de configuración (`DASHBOARD_CONFIG.etapas`: Cotización=25%, Negociación=80%, etc.) pero no reflejan tasa real de cierre histórica de Vinssa. Pendiente: agregar análisis que calcule histórico de oportunidades cerradas vs perdidas por etapa para sustituir o complementar los % configurados. Esto permitiría visualización de monto ponderado realista en el futuro (en el tab Pipeline y en Por Mes si se decide mostrar ponderado).
+- **Pipeline por Mes — mejoras futuras**: filtros adicionales (por línea, por marca, por cliente específico), exportación a CSV, comparativa contra meses anteriores ("¿cómo lucía este mismo bucket hace 30 días?"), alertas automáticas para oportunidades vencidas (Power Automate notificando al asesor cuando una opp cruza vencida sin actualización).
 
 ---
 
