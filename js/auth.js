@@ -121,14 +121,27 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ── Token silencioso con fallback a popup ────────────────────────────────────
-// Wrapper de msalInstance.acquireTokenSilent que cae a acquireTokenPopup cuando
-// MSAL no puede renovar el token en silencio. Casos cubiertos:
+// ── Token silencioso con fallback (popup desktop / redirect móvil) ───────────
+// Wrapper de msalInstance.acquireTokenSilent que cae a interacción cuando MSAL no
+// puede renovar el token en silencio. Casos cubiertos:
 // - InteractionRequiredAuthError: token expirado, MFA requerida, consent_required.
 // - BrowserAuthError con errorCode 'monitor_window_timeout': el iframe oculto que
 //   MSAL usa para renovar excedió su timeout (típico tras horas de inactividad).
-// Si el popup también falla, re-lanzamos el error ORIGINAL (no el del popup) para
-// que el caller decida cómo presentar el problema.
+//
+// Branch por dispositivo:
+// - Desktop: acquireTokenPopup (UX 1-tap, mantiene estado de la app).
+// - Móvil (viewport <768px o PWA standalone): acquireTokenRedirect. iOS Safari y
+//   Chrome Android bloquean popups; aunque el usuario los apruebe, la PWA pierde
+//   estado. Redirect navega a Microsoft y regresa; handleRedirectPromise refresca
+//   la sesión. Tradeoff: el caller (ej. dashInit) NO se resume — el usuario debe
+//   re-disparar la acción tras el regreso (2 taps en lugar de 1).
+//
+// Si la interacción falla, re-lanzamos el error ORIGINAL para que el caller maneje UX.
+function _esMovil() {
+  return window.matchMedia('(max-width: 768px)').matches
+      || window.matchMedia('(display-mode: standalone)').matches;
+}
+
 async function acquireTokenSafe(request) {
   try {
     return await msalInstance.acquireTokenSilent(request);
@@ -140,6 +153,21 @@ async function acquireTokenSafe(request) {
           || e.errorCode === 'login_required'
           || e.errorCode === 'interaction_required'));
     if (!esInteraccionRequerida) throw e;
+
+    if (_esMovil()) {
+      console.warn('acquireTokenSilent falló en móvil (' + (e.errorCode || e.message) + '), usando redirect');
+      try {
+        await msalInstance.acquireTokenRedirect(request);
+      } catch(redirectErr) {
+        console.error('acquireTokenRedirect también falló:', redirectErr);
+        throw e; // re-lanza el original
+      }
+      // La página se redirige antes de que JS continúe; esta promise no resuelve
+      // en el contexto actual. Devolvemos pending-forever para que el caller no
+      // interprete falsamente "resolvió con undefined".
+      return new Promise(() => {});
+    }
+
     console.warn('acquireTokenSilent falló (' + (e.errorCode || e.message) + '), intentando popup');
     try {
       return await msalInstance.acquireTokenPopup(request);

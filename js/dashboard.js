@@ -943,6 +943,9 @@ function _pipelineHtml(asesorNorm, divisionesVisibles) {
           : oppsHtml}
       </div>
 
+      <!-- POR MES (Cierre proyectado) — embebida entre Oportunidades y OVs -->
+      ${_pipelineMensualHtml(asesorNorm, divisionesVisibles)}
+
       <!-- OVS -->
       <div style="padding:16px 16px 4px;display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;border-top:2px solid var(--color-border-tertiary)">
         <div>
@@ -1313,7 +1316,6 @@ function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) 
 
     <div id="dash-page-a-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(dashNormPresup(asesor), divs)}
-      ${_pipelineMensualHtml(dashNormPresup(asesor), divs)}
     </div>
 
     <div id="dash-page-a-riesgo" class="dash-page" style="overflow-y:auto">
@@ -1370,7 +1372,6 @@ function _renderLider(container, mes, anio, isCurrent, mesLabel, divs) {
 
     <div id="dash-page-l-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(null, divs)}
-      ${_pipelineMensualHtml(null, divs)}
     </div>
 
     <div id="dash-page-l-asesores" class="dash-page" style="overflow-y:auto">
@@ -1440,7 +1441,6 @@ function _renderGerente(container, mes, anio, isCurrent, mesLabel, divs) {
 
     <div id="dash-page-g-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(null, divs)}
-      ${_pipelineMensualHtml(null, divs)}
     </div>
 
     <div id="dash-page-g-asesores" class="dash-page" style="overflow-y:auto">
