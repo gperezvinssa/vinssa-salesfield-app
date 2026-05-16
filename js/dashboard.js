@@ -1049,7 +1049,8 @@ function _pipelineMensualBuckets(asesorNorm, divisionesVisibles) {
   return { buckets, pico };
 }
 
-// Render del tab "Por Mes". Toma asesorNorm + divisiones igual que _pipelineHtml.
+// Render de la sección "Cierre proyectado por mes" embebida al final del tab
+// Pipeline. Toma asesorNorm + divisiones igual que _pipelineHtml.
 function _pipelineMensualHtml(asesorNorm, divisionesVisibles) {
   const { buckets, pico } = _pipelineMensualBuckets(asesorNorm, divisionesVisibles);
   const etapasConfig = DASHBOARD_CONFIG.etapas;
@@ -1059,7 +1060,12 @@ function _pipelineMensualHtml(asesorNorm, divisionesVisibles) {
   const countTotal = buckets.reduce((s, b) => s + b.count, 0);
   if (countTotal === 0) {
     return `
-      <div style="padding:14px 0 80px">
+      <div style="padding:14px 0 0;margin-top:12px;border-top:2px solid var(--color-border-tertiary)">
+        <div style="padding:0 16px 4px">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-tertiary);margin-bottom:6px">
+            Cierre proyectado por mes
+          </div>
+        </div>
         <div style="padding:24px 16px;text-align:center;color:var(--color-text-secondary);font-size:13px">
           Sin oportunidades en pipeline para los próximos 6 meses.
         </div>
@@ -1118,9 +1124,15 @@ function _pipelineMensualHtml(asesorNorm, divisionesVisibles) {
       </div>`;
   }).join('');
 
+  // Outer wrapper: top border + margin como separador de sección (mismo patrón
+  // que la sección OVs dentro de _pipelineHtml). Sin padding-bottom de 80px
+  // porque ya no es el bottom de un tab page — vive embebida dentro del tab Pipeline.
   return `
-    <div style="padding:14px 0 80px">
-      <div style="padding:0 16px 8px">
+    <div style="padding:14px 0 0;margin-top:12px;border-top:2px solid var(--color-border-tertiary)">
+      <div style="padding:0 16px 4px">
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.04em;color:var(--color-text-tertiary);margin-bottom:6px">
+          Cierre proyectado por mes
+        </div>
         <div style="font-size:20px;font-weight:600">${dashFmt(totalVisible)}</div>
         <div style="font-size:12px;color:var(--color-text-secondary)">pipeline visible · ${countTotal} oportunidades</div>
       </div>
@@ -1225,7 +1237,6 @@ function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) 
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('a-resumen',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('a-pipeline',this)">Pipeline</button>
-      <button class="dash-tab" onclick="dashTabSwitch('a-por-mes',this)">Por Mes</button>
       <button class="dash-tab" onclick="dashTabSwitch('a-riesgo',this)">En riesgo</button>
     </div>
 
@@ -1261,9 +1272,6 @@ function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) 
 
     <div id="dash-page-a-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(dashNormPresup(asesor), divs)}
-    </div>
-
-    <div id="dash-page-a-por-mes" class="dash-page" style="overflow-y:auto">
       ${_pipelineMensualHtml(dashNormPresup(asesor), divs)}
     </div>
 
@@ -1301,7 +1309,6 @@ function _renderLider(container, mes, anio, isCurrent, mesLabel, divs) {
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('l-resumen',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('l-pipeline',this)">Pipeline</button>
-      <button class="dash-tab" onclick="dashTabSwitch('l-por-mes',this)">Por Mes</button>
       <button class="dash-tab" onclick="dashTabSwitch('l-asesores',this)">Asesores</button>
       <button class="dash-tab" onclick="dashTabSwitch('l-riesgo',this)">En riesgo</button>
     </div>
@@ -1322,9 +1329,6 @@ function _renderLider(container, mes, anio, isCurrent, mesLabel, divs) {
 
     <div id="dash-page-l-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(null, divs)}
-    </div>
-
-    <div id="dash-page-l-por-mes" class="dash-page" style="overflow-y:auto">
       ${_pipelineMensualHtml(null, divs)}
     </div>
 
@@ -1371,7 +1375,6 @@ function _renderGerente(container, mes, anio, isCurrent, mesLabel, divs) {
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('g-resumen',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-pipeline',this)">Pipeline</button>
-      <button class="dash-tab" onclick="dashTabSwitch('g-por-mes',this)">Por Mes</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-asesores',this)">Asesores</button>
       <button class="dash-tab" onclick="dashTabSwitch('g-riesgo',this)">En riesgo</button>
     </div>
@@ -1396,9 +1399,6 @@ function _renderGerente(container, mes, anio, isCurrent, mesLabel, divs) {
 
     <div id="dash-page-g-pipeline" class="dash-page" style="overflow-y:auto">
       ${_pipelineHtml(null, divs)}
-    </div>
-
-    <div id="dash-page-g-por-mes" class="dash-page" style="overflow-y:auto">
       ${_pipelineMensualHtml(null, divs)}
     </div>
 

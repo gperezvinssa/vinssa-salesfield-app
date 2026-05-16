@@ -165,6 +165,8 @@ El form de Visita y Demo permite marcar quién acompañó al asesor (opcional, m
 
 Cuando alguien entra/sale de cualquiera de estos roles, actualizar `CONFIG.acompanantes` en `config.js`. El historial guardado en SharePoint sigue válido (los emails se preservan; el rol se re-infiere contra la versión actual del catálogo).
 
+**UI:** cada tarjeta muestra solo 2 líneas — `nombre` + `linea` o `division` (lo que aplique). `rol` y `reportaA` NO se renderizan en la tarjeta pero **sí permanecen en `CONFIG.acompanantes`** (datos disponibles para features futuras: notificaciones automáticas, organigrama, filtros). El buscador de la card filtra contra `data-search` (que incluye `nombre + rol + linea + division + reportaA + email`), así que "ingeniero", "Aldo", etc siguen matcheando aunque no aparezcan visualmente. Para Director Comercial u otros sin `linea`/`division`, la tarjeta muestra solo el nombre.
+
 ### SAP grupo → División mapping (`mapaGrupos`)
 - Identificacion, Herramienta de Ensamble → **Trazabilidad**
 - Vision → **Visión**
@@ -178,7 +180,7 @@ Contacto Inicial 10%, Cotización 25%, Pruebas/Demostración 60%, Negociación 8
 
 ### Pipeline por Mes (dashboard)
 
-Vista por **fecha de cierre proyectada** de las oportunidades. Existe como tab "Por Mes" en las 3 vistas (Asesor, Líder, Gerente/Director) — comparte el helper `_pipelineMensualHtml(asesorNorm, divisionesVisibles)` que reutiliza exactamente el mismo patrón de filtrado por rol que `_pipelineHtml` (asesorNorm + `mapaLineas`).
+Vista por **fecha de cierre proyectada** de las oportunidades. Vive como **sección embebida al final del tab Pipeline** ("Cierre proyectado por mes") en las 3 vistas (Asesor, Líder, Gerente/Director) — comparte el helper `_pipelineMensualHtml(asesorNorm, divisionesVisibles)` que reutiliza exactamente el mismo patrón de filtrado por rol que `_pipelineHtml` (asesorNorm + `mapaLineas`). Orden visual del tab Pipeline: Oportunidades por etapa → OVs comprometidas → Cierre proyectado por mes.
 
 **Buckets renderizados:**
 - ⚠ Vencidas — `FechaCierre < hoy_00:00`. Se omite el bucket si no hay vencidas (no estorbar). Drill-down ordena por fecha ascendente (más antiguas primero).

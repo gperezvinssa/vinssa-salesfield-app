@@ -1103,21 +1103,22 @@ function renderForm(){
   const etapasHTML=CONFIG.etapas.map(e=>`<div class="stage-item ${STATE.etapa===e.id?'sel':''}" onclick="selEtapa('${e.id}')">${e.label}</div>`).join('');
 
   // Acompañantes (líderes / ingenieros / gerencia-dirección). Lista plana con
-  // badge de rol; reuso las clases .lider-item/.lider-name/.lider-lineas
-  // (presentación genérica, no implica que todos sean líderes).
+  // dos líneas visibles: nombre + línea/división. Rol y reportaA se conservan
+  // en CONFIG.acompanantes (datos) pero NO se renderizan — disponibles para
+  // features futuras (notificaciones, organigrama, filtros).
+  // data-search expone TODOS los campos para que el buscador siga matcheando
+  // "ingeniero", "Aldo", etc aunque ya no aparezcan en la tarjeta.
   const acompanantesHTML=CONFIG.acompanantes.map(a=>{
     const sel=STATE.acompanantes.includes(a.email);
     const scope = a.linea || a.division || '';
-    const subtext = scope ? `${a.rol} · ${scope}` : a.rol;
-    const reportaLine = a.reportaA
-      ? `<div style="font-size:11px;color:var(--color-text-tertiary,#888);margin-top:1px">reporta a ${a.reportaA}</div>`
-      : '';
-    return `<div class="lider-item" onclick="toggleAcompanante('${a.email}')">
+    const scopeHtml = scope ? `<div class="lider-lineas">${scope}</div>` : '';
+    const searchable = [a.nombre, a.rol, a.linea, a.division, a.reportaA, a.email]
+      .filter(Boolean).join(' ').toLowerCase();
+    return `<div class="lider-item" data-search="${_cbAttr(searchable)}" onclick="toggleAcompanante('${a.email}')">
       <div class="avatar" style="${sel?'background:#EAF3DE;color:#0F6E56':''}">${iniciales(a.nombre)}</div>
       <div>
         <div class="lider-name">${a.nombre}</div>
-        <div class="lider-lineas">${subtext}</div>
-        ${reportaLine}
+        ${scopeHtml}
       </div>
       ${sel?'<span style="margin-left:auto;color:var(--green);font-size:13px">✓</span>':''}
     </div>`;
@@ -1270,11 +1271,11 @@ function selRazonPerdida(razon){guardarCampos();STATE.razonPerdida=razon;renderF
 
 function filtrarAcompanantes(q){
   const lista=$('acompanantes-list');if(!lista)return;
-  // Filtra contra todo el textContent del item: nombre + rol + línea + "reporta a X".
-  // Más útil que filtrar solo por nombre — permite "ingeniero", "visión", etc.
+  // Filtra contra data-search del item (incluye rol y reportaA aunque no se
+  // muestren en la tarjeta) — permite buscar "ingeniero", "Aldo", "visión", etc.
   const needle=q.toLowerCase();
   lista.querySelectorAll('.lider-item').forEach(item=>{
-    const t=item.textContent.toLowerCase();
+    const t = item.dataset.search || '';
     item.style.display=t.includes(needle)?'':'none';
   });
 }
