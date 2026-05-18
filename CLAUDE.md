@@ -99,6 +99,14 @@ La columna que guarda los acompañantes en visita/demo se renombró en SharePoin
 ### SAP queries — Oportunidades
 Las oportunidades en SAP de Vinssa usan **System Currency = USD**. Por eso `T0.MaxSumSys` y `T0.WtSumSys` en `OOPR` ya vienen en USD nativos. **NO se requiere** `CASE WHEN` ni JOIN a `ORTT` como en `OINV`/`ORDR`. Diferencia clave: facturas (`OINV`) y OVs (`ORDR`) tienen `DocCur` explícito por documento, oportunidades (`OOPR`) usan System Currency global del sistema. Verificado 2026-05-16 con `MaxSumLoc=2000 MXP` ↔ `MaxSumSys=108.73 USD` (ratio ≈ 18.4).
 
+### SAP queries — OOPR campos de fecha
+La tabla `OOPR` tiene dos campos de fecha que **NO son intercambiables**:
+- `T0.OpenDate`: cuando se creó la oportunidad. Siempre poblado.
+- `T0.CloseDate`: cuando se cerró efectivamente (Won/Lost). Vacío para `Status='O'`.
+- `T0.PredDate`: fecha estimada de cierre, capturada al crear la oportunidad. Poblado para la mayoría de oportunidades abiertas.
+
+Para reportes de pipeline futuro usar SIEMPRE `PredDate`. La query inicial usaba `CloseDate` por error, generando 868 oportunidades "sin fecha proyectada" en el dashboard cuando en SAP sí tenían fecha. Corregido el 2026-05-16.
+
 ### Date columns in xlsx → SharePoint
 If a date column is typed as Date in xlsx, Graph API serializes it to an Excel serial number (e.g. `45678`) and the dashboard parser breaks. Always format Fecha-style columns as **Text** before uploading. The parser expects `dd-MM-yyyy` strings.
 

@@ -116,7 +116,9 @@ SELECT
     T0.OpprId AS NumOportunidad,
     T0.Name AS Descripcion,
     CONVERT(varchar, T0.OpenDate, 105) AS FechaApertura,
-    CONVERT(varchar, T0.CloseDate, 105) AS FechaCierre,
+    -- T0.PredDate = Predicted Closing Date (fecha proyectada). NO usar T0.CloseDate
+    -- porque ese solo se popula cuando la oportunidad se cierra efectivamente (Status≠'O').
+    CONVERT(varchar, T0.PredDate, 105) AS FechaCierre,
     T0.MaxSumSys AS MontoEstimado,
     T0.WtSumSys AS MontoPonderado,
     T0.StepLast AS EtapaCodigo,
