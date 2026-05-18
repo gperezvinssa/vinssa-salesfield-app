@@ -294,6 +294,10 @@ Don't propose work already in motion or already decided against:
 - **Cálculo de % de cierre real basado en histórico**: actualmente los % de probabilidad por etapa vienen de configuración (`DASHBOARD_CONFIG.etapas`: Cotización=25%, Negociación=80%, etc.) pero no reflejan tasa real de cierre histórica de Vinssa. Pendiente: agregar análisis que calcule histórico de oportunidades cerradas vs perdidas por etapa para sustituir o complementar los % configurados. Esto permitiría visualización de monto ponderado realista en el futuro (en el tab Pipeline y en Por Mes si se decide mostrar ponderado).
 - **Pipeline por Mes — mejoras futuras**: filtros adicionales (por línea, por marca, por cliente específico), exportación a CSV, comparativa contra meses anteriores ("¿cómo lucía este mismo bucket hace 30 días?"), alertas automáticas para oportunidades vencidas (Power Automate notificando al asesor cuando una opp cruza vencida sin actualización).
 
+### Refactors futuros
+
+- **Mover CSS inline de `index.html` a archivos externos** (`css/styles.css` o `css/dashboard.css`) cuando haya tiempo. Hoy tener CSS inline en `<style>` dentro de `index.html` causa confusión cuando reglas en `styles.css` no aplican porque el inline las sobrescribe por cascada (el inline carga después de los `<link>`). Ejemplo concreto: el 2026-05-18 se intentó agregar `background: var(--bg)` a `.bottom-nav` en `styles.css` y no funcionaba porque `index.html` línea 143 tenía una regla con `var(--color-background-primary)` (variable inexistente, resolvía a transparent) que ganaba por orden de cascade. Al mover todo a archivos externos, las reglas viven en un solo lugar y el orden de cascade es predecible.
+
 ### Hallazgos del 2026-05-15 — calidad de datos de Oportunidades
 
 Descubiertos al probar la sección "Cierre proyectado por mes" con datos reales (override `gperez@vinssa.com → RAMON VILLEGAS`, 76 clientes formalmente asignados). La sección apareció vacía y la investigación reveló múltiples capas de problema:
