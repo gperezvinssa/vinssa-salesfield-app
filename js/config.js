@@ -78,6 +78,7 @@ const CONFIG = {
 // Cuando un asesor nuevo se suma al piloto, agregar entrada aquí.
 const EMAIL_A_ASESOR = {
   'kportillo@vinssa.com': 'KIMBERLY PORTILLO',
+  'cangel@vinssa.com': 'CARLOS ANGEL',
   // OVERRIDE TEMPORAL: permite al Director (Gerardo) probar el flujo end-to-end
   // durante la fase de pulido del piloto sin requerir login con cuenta de asesor.
   // Mapeado a RAMON VILLEGAS porque tiene cartera real significativa (~76 clientes)
