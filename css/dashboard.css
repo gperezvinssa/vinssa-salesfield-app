@@ -445,6 +445,9 @@
   background: var(--color-background-secondary, #FAF9F5);
   border-radius: 6px;
   border: 0.5px solid var(--color-border-tertiary);
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .dash-pm-drill-head {
   font-size: 11px;

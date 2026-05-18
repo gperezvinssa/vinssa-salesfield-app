@@ -969,10 +969,13 @@ function _pipelineHtml(asesorNorm, divisionesVisibles) {
 // próximos 6 meses (mes actual + 5 siguientes). Barras horizontales apiladas con
 // segmentos por etapa. Solo etapas progresivas relevantes para pipeline futuro.
 
-// Etapas visibles en este tab. Excluye Contacto Inicial (fechas no confiables a
-// esa altura del ciclo) y Factura (ya cerrada operativamente). El orden define
+// Etapas visibles en este tab. Las 6 etapas canónicas en orden progresivo (10% → 95%).
+// Razón de incluir Contacto Inicial: ver opps en CI con fecha proyectada este mes es
+// señal para que el gerente cuestione al asesor ("¿realmente cierra este mes?"). Razón
+// de incluir Factura: confirma cierres en curso. Excluye etapas raras (Contacto WEB,
+// Registro de Lead Expos, etc.) que añaden ruido visual sin volumen. El orden define
 // el orden de los segmentos dentro de cada barra.
-const _PM_ETAPAS_VISIBLES = ['Cotización', 'Pruebas / Demostración', 'Negociación', 'Trámite con Compras'];
+const _PM_ETAPAS_VISIBLES = ['Contacto Inicial', 'Cotización', 'Pruebas / Demostración', 'Negociación', 'Trámite con Compras', 'Factura'];
 const _PM_COLOR_VENCIDA = '#E24B4A';
 const _PM_COLOR_SIN_FECHA = '#9CA39E'; // gris medio — distinto del rojo de Vencidas y del gris claro de meses vacíos
 const _PM_MESES_FUTURO = 5; // mes actual + 5 = 6 meses totales
