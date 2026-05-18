@@ -56,11 +56,7 @@
 }
 
 /* ── Pages ──────────────────────────────────────────────────────────────────── */
-/* padding-bottom: 100px vive AQUÍ (no solo en #screen-dashboard) porque cada
-   .dash-page tiene overflow-y:auto inline → su propio scroll container. El padding
-   del padre no aplica al contenido scrollable interno. Cubre: ~60px bottom-nav +
-   ~20px TEST bar + ~20px buffer. Cuando se elimine la TEST bar bajar a 80px. */
-.dash-page { display: none; padding-bottom: 100px; }
+.dash-page { display: none; padding-bottom: 16px; }
 .dash-page.active { display: block; }
 
 /* ── Selector de período ────────────────────────────────────────────────────── */

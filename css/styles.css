@@ -26,6 +26,11 @@ body {
   color: var(--text);
   font-size: 15px;
   min-height: 100vh;
+  /* El elemento que scrollea en este layout es <html> (no .dash-page ni #screen-dashboard,
+     que no tienen overflow propio efectivo). El padding-bottom debe vivir aquí para
+     proyectarse al final del scroll del documento y dejar espacio sobre la bottom-nav
+     fixed (~61px) + TEST bar (~20px durante el piloto). Diagnosticado 2026-05-18. */
+  padding-bottom: 80px;
 }
 
 #app {
