@@ -495,8 +495,8 @@ function dashClientesEnRiesgo(asesor, diasUmbral = 60) {
 function dashFmt(num) {
   const abs = Math.abs(num);
   const sign = num < 0 ? '-' : '';
-  if (abs >= 1000000) return sign + '$' + (abs/1000000).toFixed(1) + 'M';
-  if (abs >= 1000)    return sign + '$' + (abs/1000).toFixed(1) + 'K';
+  if (abs >= 1000000) return sign + '$' + (abs/1000000).toFixed(2) + 'M';
+  if (abs >= 1000)    return sign + '$' + (abs/1000).toFixed(2) + 'K';
   return sign + '$' + Math.round(abs).toLocaleString('es-MX');
 }
 
@@ -1183,23 +1183,36 @@ function _pipelineMensualHtml(asesorNorm, divisionesVisibles) {
 
 // Drill-down inline: expande lista debajo de la barra. Solo un panel abierto a
 // la vez — al abrir otro, cierra el anterior.
+//
+// Toggle: usamos el dataset del propio nodo (no una variable global) como fuente
+// de verdad. La variable suelta se desincroniza cuando el dashboard re-renderiza
+// y reemplaza el nodo, dejando el tag stale apuntando a un display:none. El
+// dataset vive en el nodo mismo: si el nodo es nuevo, no hay tag → tratado como
+// cerrado. _PM_DRILL_OPEN se mantiene solo como cache para encontrar rápidamente
+// el panel previo y cerrarlo al abrir uno nuevo en otro row.
 let _PM_DRILL_OPEN = null;
 function dashPmDrill(drillId, bucketId, etapa) {
   const el = document.getElementById(drillId);
   if (!el) return;
 
-  // Si está abierto y se hace tap al mismo segmento+mes → cerrar (toggle).
   const tag = `${drillId}::${etapa}`;
-  if (_PM_DRILL_OPEN === tag) {
+  // Toggle: si el panel está visible Y fue abierto por ESTE mismo segmento, cerrar.
+  if (el.style.display === 'block' && el.dataset.dashPmOpen === tag) {
     el.style.display = 'none';
+    delete el.dataset.dashPmOpen;
     _PM_DRILL_OPEN = null;
     return;
   }
-  // Cerrar cualquier otro panel previamente abierto
+  // Cerrar cualquier otro panel previamente abierto (en OTRO row)
   if (_PM_DRILL_OPEN) {
-    const prev = _PM_DRILL_OPEN.split('::')[0];
-    const prevEl = document.getElementById(prev);
-    if (prevEl) prevEl.style.display = 'none';
+    const prevId = _PM_DRILL_OPEN.split('::')[0];
+    if (prevId !== drillId) {
+      const prevEl = document.getElementById(prevId);
+      if (prevEl) {
+        prevEl.style.display = 'none';
+        delete prevEl.dataset.dashPmOpen;
+      }
+    }
   }
 
   // Reconstruir buckets para extraer los opps de este bucket+etapa
@@ -1269,6 +1282,7 @@ function dashPmDrill(drillId, bucketId, etapa) {
       ? `<div style="padding:12px;text-align:center;color:var(--color-text-secondary);font-size:12px">Sin oportunidades en este corte.</div>`
       : itemsHtml}`;
   el.style.display = 'block';
+  el.dataset.dashPmOpen = tag;
   _PM_DRILL_OPEN = tag;
 }
 

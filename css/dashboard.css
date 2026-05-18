@@ -4,7 +4,9 @@
 #screen-dashboard {
   min-height: 100vh;
   background: var(--color-background-primary);
-  padding-bottom: 80px;
+  /* 100px = ~60px bottom-nav + ~20px TEST bar (fixed, vive arriba de la nav durante
+     el piloto) + ~20px buffer. Cuando se elimine la TEST bar bajar a 80px. */
+  padding-bottom: 100px;
 }
 
 #dashboard-container {
