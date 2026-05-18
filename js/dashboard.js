@@ -925,7 +925,7 @@ function _pipelineHtml(asesorNorm, divisionesVisibles) {
       }).join('');
 
   return `
-    <div style="padding:14px 0 80px">
+    <div style="padding:14px 0 0">
       <!-- OPORTUNIDADES -->
       <div style="padding:0 16px 4px;display:flex;justify-content:space-between;align-items:baseline">
         <div>
