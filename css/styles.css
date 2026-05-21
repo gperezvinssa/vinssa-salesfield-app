@@ -399,3 +399,29 @@ textarea { min-height: 70px; resize: none; }
   line-height: 1.4;
   text-align: center;
 }
+
+/* Toast no-bloqueante. Posición sobre la bottom-nav (~70px de altura) para que
+   no quede tapado en móvil. Fade in/out vía opacity; pointer-events:none para
+   no interferir con taps mientras está visible. */
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+  z-index: 10000;
+  text-align: center;
+}
+.app-toast-visible {
+  opacity: 1;
+}

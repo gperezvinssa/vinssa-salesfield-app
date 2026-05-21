@@ -85,6 +85,22 @@ El campo `OpportunidadID` guardado en la SharePoint List `Visitas Field App` es 
 
 ## Gotchas — never break these
 
+### Filtrado de clientes en check-in: por rol simple, NO por división
+El autocomplete de cliente en el flujo de Registrar (`cbCliActivoInit` en `app.js`) filtra `STATE.clientesActivos` según `STATE.rolUsuario` (resuelto via `cargarRolUsuario` desde `Lista Roles Dashboard.xlsx`):
+
+- **Asesor** → solo clientes con `c.Asesor === STATE.asesorSAP` (match exacto normalizado).
+- **Gerente / Líder / Director** → todos los clientes activos, sin filtro de división.
+
+**No filtramos por división aunque sea tentador.** Un cliente en SAP solo tiene un `SlpCode` (asesor), pero operativamente compra de múltiples divisiones (Caterpillar compra Suministros + Trazabilidad, p.ej.). Si filtráramos clientes por la división del asesor SAP, un gerente de Suministros NO vería a Caterpillar si su asesor asignado es de Trazabilidad — falso negativo grave. El autocomplete por texto ya resuelve el problema de "lista demasiado larga" (~2,800 clientes), así que dar a gerentes/líderes/directores acceso total no degrada UX.
+
+Implicación práctica: el `Clientes Activos.xlsx` debe contener TODOS los clientes activos con `Asesor` poblado por cliente. El frontend hace el filtrado, no el query SAP.
+
+### GPS_Disponible en SharePoint List
+La columna `GPS_Disponible` (Si/No) en `Visitas Field App` históricamente siempre guardaba `'No'` por bug: `registro.gpsDisponible` nunca se seteaba desde ningún flujo. **Corregido 2026-05-20** al implementar GPS no-bloqueante en check-in — ahora se deriva en `guardarEnSharePoint` (`sap.js`) de si `registro.gps` tiene coords numéricas válidas. Si "fix" alguien la lógica a `registro.gpsDisponible` otra vez, regresa el bug.
+
+### Check-in con GPS no-bloqueante
+Si la geolocalización falla (permiso denegado, sin señal, timeout), `checkin()` en `geo.js` **NO aborta** — completa el check-in con `gps: null`, muestra un toast no-bloqueante (`mostrarToast` en `app.js`) y el botón verde muestra sub-texto "sin ubicación". La columna `GPS_Disponible` queda `'No'`. **No revertir este patrón a bloqueante** — GPS es herramienta de optimización, no requisito; bloquear check-in penaliza al asesor por una falla técnica fuera de su control.
+
 ### SharePoint List column "Competidor"
 The display name is "Competidor" (Spanish) but the **internal name is "Competitor"** (English). `sap.js` writes to `Competitor:`. If you rename the column in SharePoint, update `sap.js`. If you "fix" the typo in `sap.js`, writes will fail silently.
 

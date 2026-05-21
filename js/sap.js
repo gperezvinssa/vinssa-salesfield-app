@@ -186,6 +186,15 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
   const ultimoCheckout = geoRegistros.filter(r => r.tipo === 'checkout' && r.cliente === registro.cliente).pop();
   const esGabinete = registro.modo === 'gabinete';
 
+  // GPS_Disponible refleja la realidad: 'Si' solo cuando hay coords reales en
+  // el registro. En gabinete o cuando GPS falló → 'No'. Históricamente este
+  // campo siempre guardaba 'No' por bug (registro.gpsDisponible nunca se
+  // seteaba). Corregido 2026-05-20 al hacer GPS no-bloqueante.
+  const gpsValido = !esGabinete
+    && registro.gps
+    && typeof registro.gps.lat === 'number'
+    && typeof registro.gps.lng === 'number';
+
   const fields = {
     Title: registro.cliente || '',
     // Identidad canónica del cliente para cruce con SAP (entidad OCRD).
@@ -212,10 +221,10 @@ async function guardarEnSharePoint(registro, sapOppId, sapActId) {
     // el rol se infiere al hacer reporting cruzando contra CONFIG.acompanantes.
     Lideres: registro.acompanantes?.join(', ') || '',
     Notas: registro.notas || '',
-    GPS_Lat: esGabinete ? null : (registro.gps?.lat || 0),
-    GPS_Lng: esGabinete ? null : (registro.gps?.lng || 0),
-    GPS_Precision: esGabinete ? null : (registro.gps?.precision || 0),
-    GPS_Disponible: registro.gpsDisponible ? 'Si' : 'No',
+    GPS_Lat: gpsValido ? registro.gps.lat : null,
+    GPS_Lng: gpsValido ? registro.gps.lng : null,
+    GPS_Precision: gpsValido ? (registro.gps.precision || 0) : null,
+    GPS_Disponible: gpsValido ? 'Si' : 'No',
     Checkin_Hora: esGabinete ? '' : (ultimoCheckin?.hora || ''),
     Checkout_Hora: esGabinete ? '' : (ultimoCheckout?.horaSalida || ''),
     Duracion_Min: esGabinete ? null : (ultimoCheckout?.duracionMinutos || 0),
@@ -512,5 +521,96 @@ async function cargarClientesActivos() {
   } catch(e) {
     console.warn('Error cargando clientes activos:', e.message);
     return [];
+  }
+}
+
+// ── Lectura de Lista Roles Dashboard.xlsx vía Graph Workbook API ─────────────
+// Devuelve { rol, division } para el email logueado. Si el email no aparece en
+// la lista, default a { rol:'asesor', division:'Todos' } — comportamiento
+// consistente con dashboard.js. Roles normalizados: 'asesor' | 'lider' |
+// 'gerente' | 'director'. La división conserva la capitalización del xlsx.
+//
+// El field app usa solo `rol` para decidir el filtrado de clientes en check-in
+// (asesor → solo suyos; otros → todos — ver CLAUDE.md). Guardamos `division`
+// también porque queda útil para features futuras.
+async function cargarRolUsuario(email) {
+  const emailKey = String(email || '').toLowerCase().trim();
+  const fallback = { rol: 'asesor', division: 'Todos' };
+  if (!emailKey) return fallback;
+
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (!accounts.length) return fallback;
+    const tokenRes = await acquireTokenSafe({
+      scopes: ['Sites.ReadWrite.All'],
+      account: accounts[0]
+    });
+    const token = tokenRes.accessToken;
+
+    if (!OPS_CACHE.driveId) {
+      const drivesRes = await fetch(
+        'https://graph.microsoft.com/v1.0/sites/versatilidadsaltillo.sharepoint.com:/sites/VINSSAAutomation:/drives',
+        { headers: { Authorization: 'Bearer ' + token } }
+      );
+      const drives = await drivesRes.json();
+      if (!drives.value || !drives.value.length) return fallback;
+      OPS_CACHE.driveId = drives.value[0].id;
+    }
+    const driveId = OPS_CACHE.driveId;
+
+    const itemsRes = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/root/children`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    const items = await itemsRes.json();
+    const file = (items.value || []).find(f => f.name === 'Lista Roles Dashboard.xlsx');
+    if (!file) {
+      console.warn('Lista Roles Dashboard.xlsx no encontrado');
+      return fallback;
+    }
+
+    let res = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${file.id}/workbook/worksheets/Sheet1/usedRange`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) {
+      res = await fetch(
+        `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${file.id}/workbook/worksheets/Hoja1/usedRange`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) return fallback;
+    }
+    const data = await res.json();
+    const values = data.values;
+    if (!values || values.length < 2) return fallback;
+
+    const headers = values[0].map(h => String(h).trim());
+    const rows = values.slice(1)
+      .filter(row => row.some(cell => cell !== '' && cell !== null))
+      .map(row => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = row[i] ?? '');
+        return obj;
+      });
+
+    const match = rows.find(r =>
+      String(r.Email || '').toLowerCase().trim() === emailKey
+    );
+    if (!match) return fallback;
+
+    // Normalizar rol — mismo patrón que dashboard.js pero con 'director' explícito.
+    // El field app necesita distinguir 'asesor' (filtra clientes) de los demás (ven todos).
+    let rol = String(match.Rol || '').toLowerCase().trim();
+    if (rol.includes('director')) rol = 'director';
+    else if (rol.includes('gerente')) rol = 'gerente';
+    else if (rol.includes('lider') || rol.includes('líder')) rol = 'lider';
+    else rol = 'asesor';
+
+    const division = String(match.Division || match.División || 'Todos').trim();
+    console.log(`Rol resuelto para ${emailKey}: ${rol} / ${division}`);
+    return { rol, division };
+  } catch(e) {
+    console.warn('Error cargando rol:', e.message);
+    return fallback;
   }
 }

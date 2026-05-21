@@ -37,6 +37,13 @@ const STATE={
   // Check-in: autocomplete sobre Clientes Activos.xlsx (~2800). Carga async.
   clientesActivos:[],                  // poblado async tras login (auth.js)
   clientesLoading:true,                // true hasta que termine la primera carga
+  // Rol del usuario para filtrado del autocomplete de check-in.
+  // Asesor → solo sus clientes asignados; gerente/líder/director → todos.
+  // Decisión 2026-05-20: NO filtramos por división porque los clientes son
+  // multi-división en la práctica y SAP solo permite un asesor por cliente.
+  rolUsuario:'asesor',                 // 'asesor' | 'lider' | 'gerente' | 'director'
+  divisionUsuario:'Todos',             // de Lista Roles Dashboard.xlsx (sin uso en field app hoy)
+  rolLoading:true,                     // true hasta que termine la carga del rol
   // Draft del check-in: cliente seleccionado/tipeado ANTES de tap "Iniciar visita".
   // El draft NO toca GEO.checkin — eso solo lo hace checkin() tras capturar GPS.
   clienteCheckinDraft:null,            // { nombre, cardCode, ciudad, estatus, esNuevo }
@@ -300,7 +307,9 @@ function renderCheckin(){
   const cambiando = STATE.cambiandoCliente;
   const titulo = cambiando ? 'Cambiar cliente' : 'Check-in';
 
-  if(STATE.clientesLoading){
+  // Espera tanto clientes como rol — el filtro por rol no puede aplicarse hasta
+  // saber si el usuario es asesor (filtra) o gerente/líder/director (no filtra).
+  if(STATE.clientesLoading || STATE.rolLoading){
     document.getElementById('screen-checkin').innerHTML = `
       <header class="top-bar">
         <button class="back-btn" onclick="cancelarCheckin()">← Atrás</button>
@@ -395,17 +404,11 @@ async function confirmarCheckin(){
 
   // Flujo normal: switch a home ANTES de GPS para que el prompt de permisos del
   // browser se vea sobre home (no sobre screen-checkin), luego captura GPS.
+  // checkin() siempre completa (con o sin GPS) — no hace falta revertir.
   STATE.modo = 'campo';
   renderHome();
   mostrarScreen('screen-home');
-  const result = await checkin(draft);
-  if(!result){
-    // GPS denegado: revertir al selector.
-    STATE.modo = null;
-    STATE.clienteCheckinDraft = null;
-    renderHome();
-    return;
-  }
+  await checkin(draft);
   STATE.clienteCheckinDraft = null;
   renderHome();
 }
@@ -470,6 +473,18 @@ document.addEventListener('click', (e) => {
 const CB_CLI_BOX = 'cb-cli-activo';
 const CB_CLI_CAP = 30;
 
+// Filtra clientes según rol del usuario. Asesor → solo los suyos (match exacto
+// normalizado contra STATE.asesorSAP). Gerente/líder/director → todos.
+// Decisión 2026-05-20: NO filtramos por división — los clientes son multi-
+// división en la práctica y SAP solo permite un asesor por cliente, así que
+// filtrar por división del asesor excluiría clientes legítimos. Ver CLAUDE.md.
+function _cbCliActivoFiltrarPorRol(items){
+  if(STATE.rolUsuario !== 'asesor') return items;
+  if(!STATE.asesorSAP) return [];      // asesor sin mapeo → nada que filtrar contra
+  const asesorNorm = normCliente(STATE.asesorSAP);
+  return items.filter(c => normCliente(c.Asesor) === asesorNorm);
+}
+
 // Orden alfabético puro por Cliente. La priorización por asesor + estatus está
 // deferida hasta que los datos de asignación en SAP sean confiables (~32% de
 // clientes están bajo MOSTRADOR o sin asesor, muchas asignaciones no reflejan
@@ -490,9 +505,10 @@ function _cbCliActivoSubtext(c){
 }
 
 function cbCliActivoInit(items){
-  const ordenados = _cbCliActivoOrdenar(items);
+  const filtrados = _cbCliActivoFiltrarPorRol(items);
+  const ordenados = _cbCliActivoOrdenar(filtrados);
   CB_STATE[CB_CLI_BOX] = {
-    items: ordenados,    // ya ordenados por prioridad — el orden se mantiene en filtros
+    items: ordenados,    // ya filtrados por rol + ordenados — el orden se mantiene en filtros
     filter: '',
     highlighted: -1,
     open: false,
@@ -684,6 +700,9 @@ function renderHome() {
         <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span style="font-weight:500">${nombre}</span></div>
         <div class="info-banner">Iniciando visita...</div>`;
     } else {
+      const subLinea = !GEO.checkin.gps
+        ? `En: ${GEO.checkin.cliente} · sin ubicación`
+        : `En: ${GEO.checkin.cliente}`;
       body.innerHTML = `
         <div style="font-size:14px;color:var(--color-text-primary);margin-bottom:16px">Hola, <span style="font-weight:500">${nombre}</span></div>
         <button class="action-card checkin-active" id="btn-checkin" onclick="checkout()">
@@ -693,7 +712,7 @@ function renderHome() {
           </div>
           <div>
             <div class="action-title">Terminar visita</div>
-            <div class="action-sub">En: ${GEO.checkin.cliente}</div>
+            <div class="action-sub">${subLinea}</div>
           </div>
         </button>
         <div style="height:0.5px;background:var(--color-border-tertiary);margin:10px 0"></div>
@@ -1431,6 +1450,30 @@ function mostrarModalCheckin() {
   mostrarScreen('screen-checkin');
   renderCheckin();
 }
+
+// ── Toast no-bloqueante ──────────────────────────────────────────────────────
+// Notificaciones efímeras (3s) sin requerir interacción. Usado por checkin()
+// cuando GPS falla y otros futuros casos. Sin librerías nuevas: un div fijo
+// reutilizable que se reemplaza si llaman al helper mientras hay otro visible.
+let _toastTimer = null;
+function mostrarToast(mensaje, ms = 3000){
+  let el = document.getElementById('app-toast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'app-toast';
+    el.className = 'app-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = mensaje;
+  // Forzar reflow para que la transición se dispare aunque el toast ya estuviera visible.
+  void el.offsetWidth;
+  el.classList.add('app-toast-visible');
+  if(_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    el.classList.remove('app-toast-visible');
+  }, ms);
+}
+window.mostrarToast = mostrarToast;
 
 // ── Exponer funciones globales ───────────────────────────────────────────────
 

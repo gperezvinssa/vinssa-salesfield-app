@@ -91,35 +91,44 @@ async function capturarGPSAlGuardar(datosRegistro) {
 
 // Recibe objeto clienteInfo con: { nombre, cardCode, ciudad, estatus, esNuevo }.
 // nombre es lo único obligatorio; cardCode null cuando es prospecto/fallback texto libre.
+//
+// GPS NO bloquea el check-in (decisión 2026-05-20). Si la geolocalización falla
+// (permiso denegado, sin señal, timeout), el check-in se completa con gps:null,
+// se persiste igual y se notifica con un toast no-bloqueante. El asesor sigue
+// el flujo normal y la columna GPS_Disponible en SharePoint queda 'No'.
 async function checkin(clienteInfo) {
+  let pos = null;
   try {
-    const pos = await obtenerPosicion();
-    GEO.checkin = {
-      cliente: clienteInfo.nombre,
-      cardCode: clienteInfo.cardCode || null,
-      ciudad: clienteInfo.ciudad || '',
-      estatus: clienteInfo.estatus || '',
-      esNuevo: !!clienteInfo.esNuevo,
-      gps: pos,
-      horaEntrada: new Date().toISOString()
-    };
-    localStorage.setItem('vinssa_checkin_activo', JSON.stringify(GEO.checkin));
-
-    guardarRegistroGeo({
-      tipo: 'checkin',
-      cliente: clienteInfo.nombre,
-      cardCode: clienteInfo.cardCode || null,
-      asesor: CONFIG.usuario.email,
-      gps: pos,
-      hora: GEO.checkin.horaEntrada
-    });
-
-    actualizarBotonCheckin(true, clienteInfo.nombre);
-    return GEO.checkin;
+    pos = await obtenerPosicion();
   } catch(e) {
-    alert('No se pudo obtener tu ubicación. Verifica que el GPS esté activado.');
-    return null;
+    console.warn('GPS no disponible al hacer check-in:', e.message);
+    if (typeof mostrarToast === 'function') {
+      mostrarToast('Sin ubicación detectada, registrado igualmente.');
+    }
   }
+
+  GEO.checkin = {
+    cliente: clienteInfo.nombre,
+    cardCode: clienteInfo.cardCode || null,
+    ciudad: clienteInfo.ciudad || '',
+    estatus: clienteInfo.estatus || '',
+    esNuevo: !!clienteInfo.esNuevo,
+    gps: pos,                            // null si GPS falló
+    horaEntrada: new Date().toISOString()
+  };
+  localStorage.setItem('vinssa_checkin_activo', JSON.stringify(GEO.checkin));
+
+  guardarRegistroGeo({
+    tipo: 'checkin',
+    cliente: clienteInfo.nombre,
+    cardCode: clienteInfo.cardCode || null,
+    asesor: CONFIG.usuario.email,
+    gps: pos,
+    hora: GEO.checkin.horaEntrada
+  });
+
+  actualizarBotonCheckin(true, clienteInfo.nombre);
+  return GEO.checkin;
 }
 
 // Cambia el cliente del check-in en curso (botón [Cambiar] desde el form).
@@ -183,6 +192,13 @@ function actualizarBotonCheckin(activo, cliente) {
   const topBar = document.querySelector('.top-bar');
 
   if (activo) {
+    // Si el check-in se registró sin GPS, mostrar sub-texto adicional para que
+    // el asesor vea que la visita no tiene ubicación. No es alerta — es solo
+    // visibilidad. Misma decisión que el toast: GPS es optimización, no requisito.
+    const sinGps = GEO.checkin && !GEO.checkin.gps;
+    const subLinea = sinGps
+      ? `En: ${cliente} · sin ubicación`
+      : `En: ${cliente}`;
     if (btn) {
       btn.className = 'action-card checkin-active';
       btn.onclick = () => checkout();
@@ -193,7 +209,7 @@ function actualizarBotonCheckin(activo, cliente) {
         </div>
         <div>
           <div class="action-title">Terminar visita</div>
-          <div class="action-sub">En: ${cliente}</div>
+          <div class="action-sub">${subLinea}</div>
         </div>`;
     }
     btns.forEach(b => {

@@ -58,6 +58,20 @@ async function iniciarApp(account) {
       STATE.clientesLoading = false;
       if (typeof onClientesActivosCargados === 'function') onClientesActivosCargados();
     });
+
+    // Rol del usuario: decide filtrado de clientes en check-in. Asesor ve solo
+    // sus clientes asignados; gerente/líder/director ven todos (decisión 2026-05-20:
+    // clientes son multi-división, ver CLAUDE.md). Default 'asesor' si email no
+    // aparece en Lista Roles Dashboard.xlsx.
+    STATE.rolUsuario = 'asesor';
+    STATE.divisionUsuario = 'Todos';
+    STATE.rolLoading = true;
+    cargarRolUsuario(email).then(({ rol, division }) => {
+      STATE.rolUsuario = rol;
+      STATE.divisionUsuario = division;
+      STATE.rolLoading = false;
+      if (typeof onClientesActivosCargados === 'function') onClientesActivosCargados();
+    });
   }
 
   document.getElementById('screen-login').style.display = 'none';
