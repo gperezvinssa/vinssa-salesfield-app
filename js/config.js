@@ -79,10 +79,13 @@ const CONFIG = {
 const EMAIL_A_ASESOR = {
   'kportillo@vinssa.com': 'KIMBERLY PORTILLO',
   'cangel@vinssa.com': 'CARLOS ANGEL',
+  'rvillegas@vinssa.com': 'RAMON VILLEGAS',
   // OVERRIDE TEMPORAL: permite al Director (Gerardo) probar el flujo end-to-end
-  // durante la fase de pulido del piloto sin requerir login con cuenta de asesor.
-  // Mapeado a RAMON VILLEGAS porque tiene cartera real significativa (~76 clientes)
-  // — permite probar el autocomplete y la priorización futura con datos densos.
-  // ELIMINAR esta entrada antes de expandir el piloto a más asesores.
-  'gperez@vinssa.com': 'RAMON VILLEGAS'
+  // como un asesor sin colisionar con la cuenta real de Ramon (rvillegas), que ya
+  // entró al piloto. Mapeado a RAFAEL MOYEDA — uno de los asesores piloto pendientes
+  // (ver pending work en CLAUDE.md). Verificar que el SlpName en SAP sea exactamente
+  // 'RAFAEL MOYEDA' (sin sufijo) la primera vez que se use; ajustar si SAP guarda
+  // variante (ej. con apellido materno).
+  // ELIMINAR esta entrada cuando Rafael Moyeda se sume con su propia cuenta MSAL.
+  'gperez@vinssa.com': 'RAFAEL MOYEDA'
 };

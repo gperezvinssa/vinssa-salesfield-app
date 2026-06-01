@@ -87,6 +87,13 @@ async function iniciarApp(account) {
     const n = document.getElementById('user-nombre');
     if (n) n.textContent = nombre.split(' ')[0];
 
+    // Re-render home con CONFIG.usuario actualizado. app.js corre renderHome() en
+    // DOMContentLoaded antes de que MSAL resuelva la sesión, así que el primer
+    // render queda con el default "Gerardo Pérez" de config.js. Sin este re-render,
+    // el saludo del home queda congelado con el default aunque el avatar (que sí
+    // se actualiza arriba directo al DOM) ya muestre las iniciales correctas.
+    if (typeof renderHome === 'function') renderHome();
+
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     const home = document.getElementById('screen-home');
     if (home) home.classList.add('active');

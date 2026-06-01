@@ -570,10 +570,17 @@ function dashRender() {
   }
 }
 
-// Find asesor name from roles file by email
+// Resolver el SlpName de SAP del usuario logueado. Fuente primaria: EMAIL_A_ASESOR
+// (única fuente de verdad para email → SlpName, alineada con el flujo de Field App).
+// Fallback al display name de MSAL solo si el email no está en el mapeo — en ese caso
+// el filtro de ventas casi seguro no encontrará match (el display name de MSAL suele
+// incluir apellido materno mientras SAP usa solo primer apellido), pero al menos da
+// una señal útil en consola en lugar de filtrar a string vacío.
 function _findAsesorNombre(email) {
-  // Look up their name in the presupuesto by matching email in roles
-  // For now use the display name from MSAL
+  const key = String(email || '').toLowerCase();
+  if (typeof EMAIL_A_ASESOR !== 'undefined' && EMAIL_A_ASESOR[key]) {
+    return EMAIL_A_ASESOR[key];
+  }
   const accounts = msalInstance.getAllAccounts();
   if (accounts.length) return accounts[0].name || accounts[0].username;
   return email;
@@ -1671,11 +1678,26 @@ window.dashTestMode = function(rol, division) {
   console.log('Test mode:', rol, division);
   dashRender();
 };
+// Solo visible para gperez@vinssa.com (Director). Los asesores piloto no la ven.
+// CLAUDE.md indica que la barra TEST debe permanecer hasta validar todos los roles
+// end-to-end con usuarios reales — este gate la oculta a los usuarios reales sin
+// eliminarla. Cuando se expanda a otros validadores, agregar sus emails al Set.
+const DASH_TEST_EMAILS = new Set(['gperez@vinssa.com']);
+function _dashUsuarioPuedeVerTestBar(){
+  try {
+    const accts = msalInstance.getAllAccounts();
+    if (!accts.length) return false;
+    const email = String(accts[0].username || '').toLowerCase();
+    return DASH_TEST_EMAILS.has(email);
+  } catch(_) { return false; }
+}
+
 (function(){
   const observer = new MutationObserver(() => {
     if (document.getElementById('dash-test-bar')) return;
     const dash = document.getElementById('screen-dashboard');
     if (!dash) return;
+    if (!_dashUsuarioPuedeVerTestBar()) return;
     const bar = document.createElement('div');
     bar.id = 'dash-test-bar';
     bar.style.cssText = 'position:fixed;bottom:70px;left:0;right:0;background:#111827;color:white;font-size:10px;padding:5px 8px;z-index:9999;display:flex;gap:4px;flex-wrap:wrap;justify-content:center';
