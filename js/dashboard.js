@@ -559,9 +559,12 @@ function dashRender() {
   const divs      = dashGetDivisionesVisibles(); // null = Todos
 
   if (rol === 'asesor') {
-    // Asesor: find their SAP name from ventas data
     const asesorNombre = _findAsesorNombre(DASH_STATE.userEmail);
-    _renderAsesor(container, asesorNombre, mes, anio, isCurrent, mesLabel, divs);
+    // CLAUDE.md spec: "Asesor — only own numbers, regardless of division".
+    // Pasar null para divisionesVisibles: un asesor de Trazabilidad puede vender
+    // Suministros y debe ver el total. La Division en Lista Roles Dashboard
+    // aplica a líder/gerente para limitar su scope de equipo, no al asesor mismo.
+    _renderAsesor(container, asesorNombre, mes, anio, isCurrent, mesLabel, null);
   } else if (rol === 'lider') {
     _renderLider(container, mes, anio, isCurrent, mesLabel, divs);
   } else {
