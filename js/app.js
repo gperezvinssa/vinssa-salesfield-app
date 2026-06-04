@@ -556,7 +556,35 @@ function cbCliActivoRenderList(){
   cb._lastMatches = matches;
 
   if(matches.length === 0){
-    list.innerHTML = `<div class="cb-empty">Sin coincidencias. Si es un prospecto nuevo, sigue escribiendo y al confirmar se guardará sin CardCode.</div>`;
+    // Panel diagnóstico TEMPORAL para piloto Ramon — eliminar después de validar.
+    // Visible solo para gperez/rvillegas. Aparece debajo del mensaje "Sin coincidencias"
+    // y muestra el estado interno del filtro para que el usuario pueda screenshot
+    // y compartir el contexto sin necesidad de devtools.
+    let diagHtml = '';
+    try {
+      const accts = msalInstance.getAllAccounts();
+      const email = accts.length ? String(accts[0].username || '').toLowerCase() : '';
+      if (email === 'gperez@vinssa.com' || email === 'rvillegas@vinssa.com') {
+        const total = STATE.clientesActivos.length;
+        const tieneAsesor = STATE.clientesActivos.filter(c => c.Asesor).length;
+        const matchExacto = STATE.asesorSAP
+          ? STATE.clientesActivos.filter(c => normCliente(c.Asesor) === normCliente(STATE.asesorSAP)).length
+          : 0;
+        const sample = STATE.clientesActivos.slice(0, 3).map(c => `${c.Cliente || '?'}/Asesor="${c.Asesor || ''}"`).join(' | ');
+        diagHtml = `<div style="font-size:10px;color:#666;background:#f5f5f5;padding:8px;margin-top:4px;font-family:monospace;line-height:1.4;border-top:1px solid #ddd">
+          <div><strong>DIAG (temporal)</strong></div>
+          <div>email=${_cbEsc(email)}</div>
+          <div>asesorSAP=${_cbEsc(STATE.asesorSAP || 'null')}</div>
+          <div>rolUsuario=${_cbEsc(STATE.rolUsuario)}</div>
+          <div>clientesActivos.total=${total}</div>
+          <div>clientes con Asesor poblado=${tieneAsesor}</div>
+          <div>match exacto con asesorSAP=${matchExacto}</div>
+          <div>cb.items tras filtro=${cb.items.length}</div>
+          <div>sample[0..2]=${_cbEsc(sample)}</div>
+        </div>`;
+      }
+    } catch(_) {}
+    list.innerHTML = `<div class="cb-empty">Sin coincidencias. Si es un prospecto nuevo, sigue escribiendo y al confirmar se guardará sin CardCode.</div>${diagHtml}`;
   } else {
     const opts = matches.map((m, i) => {
       const hl = i === cb.highlighted ? ' cb-hl' : '';
