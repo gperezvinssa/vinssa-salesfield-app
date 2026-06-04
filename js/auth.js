@@ -24,14 +24,21 @@ async function iniciarApp(account) {
   const nombre = account.name || account.username;
   const email  = account.username;
 
+  // Impersonación (piloto): si está activa, todas las resoluciones email→asesor
+  // y email→rol usan el email impersonado. El token MSAL y el nombre del header
+  // siguen siendo del usuario real para evitar confusiones de auth.
+  const imp = (typeof _getImpersonation === 'function') ? _getImpersonation() : { active: false, email: '' };
+  const effectiveEmail = imp.active ? imp.email : email;
+
   CONFIG.usuario.nombre    = nombre;
   CONFIG.usuario.email     = email;
   CONFIG.usuario.iniciales = nombre.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase();
 
-  // Resolver asesor SAP del usuario logueado para piloto de Actualizar Oportunidad.
-  // Si no está en el mapeo, queda null y los 3 sub-flujos muestran mensaje de piloto.
+  // Resolver asesor SAP del usuario (impersonado si aplica) para piloto de
+  // Actualizar Oportunidad. Si no está en el mapeo, queda null y los 3
+  // sub-flujos muestran mensaje de piloto.
   if (typeof STATE !== 'undefined') {
-    const emailKey = String(email || '').toLowerCase();
+    const emailKey = String(effectiveEmail || '').toLowerCase();
     STATE.asesorSAP = (typeof EMAIL_A_ASESOR !== 'undefined' && EMAIL_A_ASESOR[emailKey]) || null;
     STATE.oportunidades = [];
     // Carga async — no bloquea la entrada a Home. Cuando termina,
@@ -66,7 +73,7 @@ async function iniciarApp(account) {
     STATE.rolUsuario = 'asesor';
     STATE.divisionUsuario = 'Todos';
     STATE.rolLoading = true;
-    cargarRolUsuario(email).then(({ rol, division }) => {
+    cargarRolUsuario(effectiveEmail).then(({ rol, division }) => {
       STATE.rolUsuario = rol;
       STATE.divisionUsuario = division;
       STATE.rolLoading = false;

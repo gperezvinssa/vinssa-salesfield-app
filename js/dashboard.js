@@ -125,7 +125,10 @@ async function dashGetToken() {
     account: accounts[0]
   });
   DASH_STATE.token = result.accessToken;
-  DASH_STATE.userEmail = accounts[0].username.toLowerCase();
+  // Si hay impersonación activa, el dashboard resuelve rol/asesor contra el
+  // email impersonado. El token sigue siendo del usuario real (MSAL).
+  const imp = (typeof _getImpersonation === 'function') ? _getImpersonation() : { active: false, email: '' };
+  DASH_STATE.userEmail = (imp.active ? imp.email : accounts[0].username).toLowerCase();
   return DASH_STATE.token;
 }
 

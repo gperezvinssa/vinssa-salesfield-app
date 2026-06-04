@@ -89,3 +89,53 @@ const EMAIL_A_ASESOR = {
   // ELIMINAR esta entrada cuando Rafael Moyeda se sume con su propia cuenta MSAL.
   'gperez@vinssa.com': 'RAFAEL MOYEDA'
 };
+
+// ── Impersonación TEMPORAL (piloto) ──────────────────────────────────────────
+// Permite a un usuario (típicamente gperez) ver el app como si fuera otro asesor.
+// Solo afecta la lógica de rendering — el token MSAL y permisos Graph siguen
+// siendo del usuario logueado. El email impersonado se usa para:
+//   - resolver asesorSAP via EMAIL_A_ASESOR (auth.js)
+//   - cargar rol via Lista Roles Dashboard.xlsx (cargarRolUsuario)
+//   - resolver vista de dashboard (DASH_STATE.userEmail)
+// Activar desde devtools: vinssaImpersonate('rvillegas@vinssa.com')
+// Desactivar:             vinssaStopImpersonate()
+// Eliminar este bloque cuando termine el piloto.
+const IMPERSONATE_KEY = 'vinssa_impersonate_email';
+function _getImpersonation() {
+  try {
+    const email = (localStorage.getItem(IMPERSONATE_KEY) || '').trim().toLowerCase();
+    return { active: !!email, email };
+  } catch(_) { return { active: false, email: '' }; }
+}
+function vinssaImpersonate(email) {
+  if (!email || typeof email !== 'string') {
+    console.warn('Uso: vinssaImpersonate("rvillegas@vinssa.com")');
+    return;
+  }
+  localStorage.setItem(IMPERSONATE_KEY, email.toLowerCase().trim());
+  console.log('Impersonando:', email, '— recargando...');
+  location.reload();
+}
+function vinssaStopImpersonate() {
+  localStorage.removeItem(IMPERSONATE_KEY);
+  console.log('Impersonación desactivada — recargando...');
+  location.reload();
+}
+window.vinssaImpersonate     = vinssaImpersonate;
+window.vinssaStopImpersonate = vinssaStopImpersonate;
+
+// Banner naranja fijo arriba cuando hay impersonación activa. Se inyecta en
+// DOMContentLoaded y agrega padding-top al body para no tapar contenido.
+function _renderImpersonationBanner() {
+  const imp = _getImpersonation();
+  if (!imp.active) return;
+  if (document.getElementById('vinssa-imp-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'vinssa-imp-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#D85A30;color:white;font-size:12px;padding:8px 12px;z-index:99999;display:flex;justify-content:space-between;align-items:center;gap:8px;font-family:system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.25)';
+  banner.innerHTML = '<span>\u{1F3AD} Impersonando: <strong>' + imp.email + '</strong></span>' +
+    '<button onclick="vinssaStopImpersonate()" style="background:white;color:#D85A30;border:none;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer">Salir</button>';
+  document.body.appendChild(banner);
+  document.body.style.paddingTop = '36px';
+}
+window.addEventListener('DOMContentLoaded', _renderImpersonationBanner);
