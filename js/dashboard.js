@@ -1304,7 +1304,47 @@ function _renderAsesor(container, asesor, mes, anio, isCurrent, mesLabel, divs) 
   const ctx    = dashMensajeCtx(met.pct, met.falta, met.diasRestantes, met.ritmo, isCurrent);
   const col    = dashColor(met.pct);
 
+  // Diag temporal — solo gperez/rvillegas. Eliminar tras validar piloto.
+  // Mide directamente sobre DASH_STATE.ventas para confirmar si el $0 viene de
+  // match de nombre, división, o el xlsx subyacente.
+  let diagHtml = '';
+  try {
+    const accts = msalInstance.getAllAccounts();
+    const email = accts.length ? String(accts[0].username || '').toLowerCase() : '';
+    if (email === 'gperez@vinssa.com' || email === 'rvillegas@vinssa.com') {
+      const v = DASH_STATE.ventas || [];
+      const asesorNorm = dashNormPresup(asesor);
+      const matchExacto = v.filter(x => dashNormNombre(x.Asesor) === asesorNorm).length;
+      const incluyeRamon = v.filter(x => String(x.Asesor || '').toUpperCase().includes('RAMON')).length;
+      const incluyeVillegas = v.filter(x => String(x.Asesor || '').toUpperCase().includes('VILLEGAS')).length;
+      const matchMes = v.filter(x => {
+        if (dashNormNombre(x.Asesor) !== asesorNorm) return false;
+        const f = dashParseFecha(x.Fecha);
+        return f && (f.getMonth() + 1) === mes && f.getFullYear() === anio;
+      }).length;
+      const headersVenta = v[0] ? Object.keys(v[0]).join(',') : '(empty)';
+      const asesoresUnicos = [...new Set(v.slice(0, 1000).map(x => x.Asesor))].slice(0, 8);
+      diagHtml = `<div style="font-size:10px;color:#444;background:#fff7e6;padding:10px;font-family:monospace;line-height:1.5;border:1px solid #e0c98a;margin:8px 0">
+        <div style="font-weight:bold">DIAG dashboard asesor (temporal)</div>
+        <div>email=${email}</div>
+        <div>rol=${DASH_STATE.rol} / division=${DASH_STATE.division}</div>
+        <div>asesor (resuelto via EMAIL_A_ASESOR/MSAL)=${asesor}</div>
+        <div>asesorNorm (post mapaAlias + uppercase + sin acentos)=${asesorNorm}</div>
+        <div>divs pasado a _renderAsesor=${divs === null ? 'null (ver todo)' : '[' + divs.join(',') + ']'}</div>
+        <div>DASH_STATE.ventas.total=${v.length}</div>
+        <div>Match exacto Asesor===asesorNorm: <strong>${matchExacto}</strong></div>
+        <div>Asesor incluye RAMON: ${incluyeRamon}</div>
+        <div>Asesor incluye VILLEGAS: ${incluyeVillegas}</div>
+        <div>Match en ${mesLabel}: <strong>${matchMes}</strong></div>
+        <div>Headers primera fila: ${headersVenta}</div>
+        <div>Asesores únicos primeros 8: ${asesoresUnicos.map(a => '"' + a + '"').join(', ')}</div>
+        <div style="margin-top:4px;padding-top:4px;border-top:1px dashed #ccc">met.totalVenta=${met.totalVenta} / met.totalMeta=${met.totalMeta} / met.numOVs=${met.numOVs}</div>
+      </div>`;
+    }
+  } catch(_) {}
+
   container.innerHTML = `
+    ${diagHtml}
     <div class="dash-tabs">
       <button class="dash-tab active" onclick="dashTabSwitch('a-resumen',this)">Resumen</button>
       <button class="dash-tab" onclick="dashTabSwitch('a-pipeline',this)">Pipeline</button>

@@ -571,6 +571,31 @@ function cbCliActivoRenderList(){
           ? STATE.clientesActivos.filter(c => normCliente(c.Asesor) === normCliente(STATE.asesorSAP)).length
           : 0;
         const sample = STATE.clientesActivos.slice(0, 3).map(c => `${c.Cliente || '?'}/Asesor="${c.Asesor || ''}"`).join(' | ');
+        // Bloque adicional: estado del dashboard si ya fue cargado (DASH_STATE.ventas
+        // se puebla en dashInit cuando el usuario abre la pestaña Resultados). Sirve
+        // para ver simultáneamente el match de check-in y de ventas en un screenshot.
+        let dashLines = '';
+        if (typeof DASH_STATE !== 'undefined' && Array.isArray(DASH_STATE.ventas) && DASH_STATE.ventas.length > 0) {
+          const v = DASH_STATE.ventas;
+          const asesorNorm = STATE.asesorSAP
+            ? String(STATE.asesorSAP).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+            : '';
+          const matchVentas = asesorNorm
+            ? v.filter(x => String(x.Asesor || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim() === asesorNorm).length
+            : 0;
+          const incluyeRamon = v.filter(x => String(x.Asesor || '').toUpperCase().includes('RAMON')).length;
+          const incluyeVillegas = v.filter(x => String(x.Asesor || '').toUpperCase().includes('VILLEGAS')).length;
+          const headersVenta = v[0] ? Object.keys(v[0]).join(',') : '(empty)';
+          dashLines = `
+            <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ccc"><strong>dashboard:</strong></div>
+            <div>DASH_STATE.ventas.total=${v.length}</div>
+            <div>match exacto asesorSAP en Ventas Asesor v2=${matchVentas}</div>
+            <div>Ventas con Asesor incluye RAMON=${incluyeRamon}</div>
+            <div>Ventas con Asesor incluye VILLEGAS=${incluyeVillegas}</div>
+            <div>Headers fila venta=${_cbEsc(headersVenta)}</div>`;
+        } else {
+          dashLines = `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ccc;opacity:.6">dashboard: no cargado (abre pestaña Resultados y vuelve)</div>`;
+        }
         diagHtml = `<div style="font-size:10px;color:#666;background:#f5f5f5;padding:8px;margin-top:4px;font-family:monospace;line-height:1.4;border-top:1px solid #ddd">
           <div><strong>DIAG (temporal)</strong></div>
           <div>email=${_cbEsc(email)}</div>
@@ -581,6 +606,7 @@ function cbCliActivoRenderList(){
           <div>match exacto con asesorSAP=${matchExacto}</div>
           <div>cb.items tras filtro=${cb.items.length}</div>
           <div>sample[0..2]=${_cbEsc(sample)}</div>
+          ${dashLines}
         </div>`;
       }
     } catch(_) {}
